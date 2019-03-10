@@ -1,11 +1,10 @@
 local REALM_BUTTON_HEIGHT = 16;
 local MAX_REALMS_DISPLAYED = 20;
-local MAX_REALM_CATEGORY_TABS = 8;
 
 function RealmList_OnLoad(self)
 	self.selectedRealm = nil;
 	self.selectedCategory = nil;
-	
+
 	local scrollFrame = RealmListScrollFrame;
 	scrollFrame.update = function() RealmList_Update() end;
 	HybridScrollFrame_CreateButtons(RealmListScrollFrame, "RealmListRealmButtonTemplate");
@@ -17,11 +16,16 @@ function RealmList_Update()
 		RealmList.selectedCategory = C_RealmList.GetAvailableCategories()[1];
 	end
 
+	local kioskRealmAddr = GetKioskAutoRealmAddress();
+	if (kioskRealmAddr) then
+		RealmList.selectedRealm = kioskRealmAddr;
+	end
+
 	-- Update category tabs
 	RealmList_UpdateTabs();
 
 	-- Make sure the selected realm is on-screen
-	
+
 	-- Update the realm buttons
 	local realms = RealmList.selectedCategory and C_RealmList.GetRealmsInCategory(RealmList.selectedCategory) or {};
 	RealmListUtility_SortRealms(realms);
@@ -154,6 +158,11 @@ function RealmList_Update()
 		RealmListHighlight:Hide();
 	end
 
+	if (kioskRealmAddr and foundSelectedRealm) then
+		C_RealmList.ConnectToRealm(kioskRealmAddr);
+		SetKioskAutoRealmAddress(nil);
+	end
+
 	RealmList_UpdateOKButton();
 
 	HybridScrollFrame_Update(scrollFrame, (scrollFrame.buttons[1]:GetHeight()) * #realms, scrollFrame:GetHeight());
@@ -173,7 +182,7 @@ function RealmList_UpdateTabs()
 	local categories = C_RealmList.GetAvailableCategories();
 	local numTabs = #categories;
 	local tab;
-	for i=1, MAX_REALM_CATEGORY_TABS do
+	for i=1, numTabs do
 		tab = _G["RealmListTab"..i];
 		if ( not tab ) then
 			tab = CreateFrame("Button", "RealmListTab"..i, RealmListBackground, "RealmListTabButtonTemplate");
@@ -185,6 +194,9 @@ function RealmList_UpdateTabs()
 			tab:Hide();
 		elseif ( i <= numTabs ) then
 			local name, isTournament, isInvalidLocale = C_RealmList.GetCategoryInfo(categories[i]);
+			if not name or name == "" then
+				name = "Invalid Category";
+			end
 			tab:SetText(name);
 			GlueTemplates_TabResize(0, tab);
 			tab:Show();
@@ -243,7 +255,7 @@ function RealmList_OnCancel()
 	local auroraState, connectedToWoW, wowConnectionState, hasRealmList, waitingForRealmList = C_Login.GetState();
 	if ( not connectedToWoW ) then
 		C_Login.DisconnectFromServer();
-	else 
+	else
 		C_RealmList.ClearRealmList();
 	end
 end
@@ -283,7 +295,7 @@ function RealmList_OnShow(self)
 
 	--Update the UI
 	RealmList_Update();
-	
+
 	if ( not C_RealmList.IsRealmListComplete() ) then
 		GlueDialog_Show("OKAY_MUST_ACCEPT", REALM_LIST_PARTIAL_RESULTS);
 	end

@@ -115,7 +115,7 @@ end
 
 function AuraButton_Update(buttonName, index, filter)
 	local unit = PlayerFrame.unit;
-	local name, rank, texture, count, debuffType, duration, expirationTime, _, _, _, spellId, _, _, _, _, timeMod = UnitAura(unit, index, filter);
+	local name, texture, count, debuffType, duration, expirationTime, _, _, _, spellId, _, _, _, _, timeMod = UnitAura(unit, index, filter);
 	local buffName = buttonName..index;
 	local buff = _G[buffName];
 	
@@ -299,7 +299,7 @@ function BuffFrame_UpdateAllBuffAnchors()
 		if ( (index > 1) and (mod(index, BUFFS_PER_ROW) == 1) ) then
 			-- New row
 			numAuraRows = numAuraRows + 1;
-			buff:SetPoint("TOP", aboveBuff, "BOTTOM", 0, -BUFF_ROW_SPACING);
+			buff:SetPoint("TOPRIGHT", aboveBuff, "BOTTOMRIGHT", 0, -BUFF_ROW_SPACING);
 			aboveBuff = buff;
 		elseif ( index == 1 ) then
 			numAuraRows = 1;
@@ -309,6 +309,7 @@ function BuffFrame_UpdateAllBuffAnchors()
 			if ( numBuffs == 1 ) then
 				if ( BuffFrame.numEnchants > 0 ) then
 					buff:SetPoint("TOPRIGHT", "TemporaryEnchantFrame", "TOPLEFT", BUFF_HORIZ_SPACING, 0);
+					aboveBuff = TemporaryEnchantFrame;
 				else
 					buff:SetPoint("TOPRIGHT", BuffFrame, "TOPRIGHT", 0, 0);
 				end

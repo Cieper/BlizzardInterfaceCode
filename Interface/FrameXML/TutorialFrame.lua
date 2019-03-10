@@ -79,7 +79,7 @@ local DISPLAY_DATA = {
 	[16] = { --TUTORIAL_REPUTATION
 		tileHeight = 8, 
 		anchorData = {align = "RIGHT", xOff = -25, yOff = -150},
-		callOut	= {parent = "CharacterMicroButton", align = "TOPLEFT", xOff = -5, yOff = -17, width = 38, height = 45},
+		callOut	= {parent = "CharacterMicroButton", align = "TOPLEFT", xOff = -5, yOff = 5, width = 38, height = 45},
 		textBox = {topLeft_xOff = 33, topLeft_yOff = -75, bottomRight_xOff = -29, bottomRight_yOff = 35},
 	},
 	
@@ -193,21 +193,21 @@ local DISPLAY_DATA = {
 	[51] = { --TUTORIAL_LOOKINGFORGROUP
 		tileHeight = 7, 
 		anchorData = {align = "RIGHT", xOff = -25, yOff = -150},
-		callOut	= {parent = "LFDMicroButton", align = "TOPLEFT", xOff = -5, yOff = -17, width = 38, height = 45},
+		callOut	= {parent = "LFDMicroButton", align = "TOPLEFT", xOff = -5, yOff = 5, width = 38, height = 45},
 		textBox = {topLeft_xOff = 33, topLeft_yOff = -75, bottomRight_xOff = -29, bottomRight_yOff = 35},
 	},
 
 	[52] = { --TUTORIAL_CRITTER
 		tileHeight = 11, 
 		anchorData = {align = "RIGHT", xOff = -25, yOff = -150},
-		callOut	= {parent = "SpellbookMicroButton", align = "TOPLEFT", xOff = -5, yOff = -17, width = 38, height = 45},
+		callOut	= {parent = "CollectionsMicroButton", align = "TOPLEFT", xOff = -5, yOff = 5, width = 38, height = 45},
 		textBox = {topLeft_xOff = 33, topLeft_yOff = -75, bottomRight_xOff = -29, bottomRight_yOff = 35},
 	},
 	
 	[53] = { --TUTORIAL_MOUNT
 		tileHeight = 13, 
 		anchorData = {align = "RIGHT", xOff = -25, yOff = -150},
-		callOut	= {parent = "SpellbookMicroButton", align = "TOPLEFT", xOff = -5, yOff = -17, width = 38, height = 45},
+		callOut	= {parent = "CollectionsMicroButton", align = "TOPLEFT", xOff = -5, yOff = 5, width = 38, height = 45},
 		textBox = {topLeft_xOff = 33, topLeft_yOff = -75, bottomRight_xOff = -29, bottomRight_yOff = 35},
 	},
 	
@@ -434,6 +434,9 @@ function TutorialFrame_CheckNextPrevButtons()
 end
 
 function TutorialFrame_Update(currentTutorial)
+	if (IsKioskModeEnabled() and UnitLevel("player") >= MAX_PLAYER_LEVEL_TABLE[LE_EXPANSION_LEVEL_CURRENT - 1]) then
+		return;
+	end
 
 	local displayData = DISPLAY_DATA[ currentTutorial ];
 	if ( not displayData or displayData.unused ) then

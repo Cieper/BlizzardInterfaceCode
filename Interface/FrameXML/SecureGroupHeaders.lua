@@ -113,8 +113,15 @@ local function SetupUnitButtonConfiguration( header, newChild, defaultConfigFunc
 	if ( type(configCode) == "string" ) then
 		local selfHandle = GetFrameHandle(newChild);
 		if ( selfHandle ) then
-			CallRestrictedClosure("self", GetManagedEnvironment(header, true),
+			CallRestrictedClosure(newChild, "self", GetManagedEnvironment(header, true),
 			                      selfHandle, configCode, selfHandle);
+		end
+	end
+
+	local copyAttributes = header:GetAttribute("_initialAttributeNames");
+	if ( type(copyAttributes) == "string" ) then
+		for name in copyAttributes:gmatch("[^,]+") do
+			newChild:SetAttribute(name, scrub(header:GetAttribute("_initialAttribute-" .. name)));
 		end
 	end
 end
@@ -206,7 +213,7 @@ local function configureChildren(self, unitTable)
 		if ( type(configCode) == "string" ) then
 			local selfHandle = GetFrameHandle(unitButton);
 			if ( selfHandle ) then
-				CallRestrictedClosure("self",
+				CallRestrictedClosure(unitButton, "self",
 				                      GetManagedEnvironment(unitButton, true),
 				                      selfHandle, configCode, selfHandle);
 			end
@@ -659,7 +666,7 @@ local function SetupAuraButtonConfiguration( header, newChild, defaultConfigFunc
 	if ( type(configCode) == "string" ) then
 		local selfHandle = GetFrameHandle(newChild);
 		if ( selfHandle ) then
-			CallRestrictedClosure("self", GetManagedEnvironment(header, true),
+			CallRestrictedClosure(newChild, "self", GetManagedEnvironment(header, true),
 			                      selfHandle, configCode, selfHandle);
 		end
 	end
@@ -1018,7 +1025,7 @@ function SecureAuraHeader_Update(self)
 		local i = 1;
 		repeat
 			local aura, _, duration = freshTable();
-			aura.name, _, _, _, _, duration, aura.expires, aura.caster, _, aura.shouldConsolidate, _ = UnitAura(unit, i, fullFilter);
+			aura.name, _, _, _, duration, aura.expires, aura.caster, _, aura.shouldConsolidate, _ = UnitAura(unit, i, fullFilter);
 			if ( aura.name ) then
 				aura.filter = fullFilter;
 				aura.index = i;

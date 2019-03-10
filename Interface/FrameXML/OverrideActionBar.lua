@@ -84,16 +84,30 @@ function OverrideActionBar_OnEvent(self, event, ...)
 	elseif ( event == "PLAYER_XP_UPDATE" ) then
 		OverrideActionBar_UpdateXpBar();
 	elseif ( event == "UNIT_ENTERED_VEHICLE" ) then
-		OverrideActionBar_CalcSize();
+		OverrideActionBar_UpdateSkin();
 	elseif ( event == "UNIT_ENTERING_VEHICLE" ) then
-		self.HasExit, self.HasPitch = select(8, ...);
+		self.HasExit, self.HasPitch = select(6, ...);
 	end
 end
 
 function OverrideActionBar_OnShow(self)
+	OverrideActionBar_UpdateMicroButtons();
+end
+
+function OverrideActionBar_UpdateMicroButtons()
 	local anchorX, anchorY = OverrideActionBar_GetMicroButtonAnchor();
 	UpdateMicroButtonsParent(OverrideActionBar);
 	MoveMicroButtons("BOTTOMLEFT", OverrideActionBar, "BOTTOMLEFT", anchorX, anchorY, true);
+end
+
+function OverrideActionBar_UpdateSkin()
+	-- For now, a vehicle has precedence over override bars (hopefully designers make it so these never conflict)
+	if ( HasVehicleActionBar() ) then
+		OverrideActionBar_Setup(UnitVehicleSkin("player"), GetVehicleBarIndex());
+		OverrideActionBar_UpdateMicroButtons();
+	else
+		OverrideActionBar_Setup(GetOverrideBarSkin(), GetOverrideBarIndex());
+	end
 end
 
 function OverrideActionBar_SetSkin(skin)
@@ -147,13 +161,13 @@ end
 
 
 function OverrideActionBar_GetMicroButtonAnchor()
-	local x, y = 542, 41;
+	local x, y = 543, 43;
 	if OverrideActionBar.HasExit and OverrideActionBar.HasPitch then
-		x = 625;
+		x = 626;
 	elseif OverrideActionBar.HasPitch then
-		x = 629;
+		x = 630;
 	elseif OverrideActionBar.HasExit then
-		x = 537;
+		x = 538;
 	end
 	return x,y
 end
@@ -207,11 +221,26 @@ function OverrideActionBar_Setup(skin, barIndex)
 		end
 	end
 	
+	local shouldShowHealthBar;
+	local shouldShowManaBar;
+	--vehicles always show both bars, override bars check their flags
 	if HasVehicleActionBar() then
+		shouldShowHealthBar = true;
+		shouldShowManaBar = true;
+	else
+		shouldShowHealthBar = C_ActionBar.ShouldOverrideBarShowHealthBar();
+		shouldShowManaBar = C_ActionBar.ShouldOverrideBarShowManaBar();
+	end
+
+	if shouldShowHealthBar then
 		OverrideActionBarHealthBar:Show();
-		OverrideActionBarPowerBar:Show();
 	else
 		OverrideActionBarHealthBar:Hide();
+	end
+
+	if shouldShowManaBar then
+		OverrideActionBarPowerBar:Show();
+	else
 		OverrideActionBarPowerBar:Hide();
 	end
 
@@ -223,7 +252,7 @@ end
 
 function OverrideActionBar_UpdateXpBar(newLevel)
 	local level = newLevel or UnitLevel("player");
-	if ( level == MAX_PLAYER_LEVEL or IsXPUserDisabled() ) then
+	if ( IsLevelAtEffectiveMaxLevel(level) or IsXPUserDisabled() ) then
 		OverrideActionBar.xpBar:Hide();
 	else
 		local currXP = UnitXP("player");

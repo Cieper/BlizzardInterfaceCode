@@ -33,15 +33,18 @@ function MailFrame_OnLoad(self)
 	self:RegisterEvent("CLOSE_INBOX_ITEM");
 	self:RegisterEvent("MAIL_LOCK_SEND_ITEMS");
 	self:RegisterEvent("MAIL_UNLOCK_SEND_ITEMS");
+	self:RegisterEvent("TRIAL_STATUS_UPDATE");
 	-- Set previous and next fields
 	MoneyInputFrame_SetPreviousFocus(SendMailMoney, SendMailBodyEditBox);
 	MoneyInputFrame_SetNextFocus(SendMailMoney, SendMailNameEditBox);
 	MoneyFrame_SetMaxDisplayWidth(SendMailMoneyFrame, 160);
-	
-	if (GameLimitedMode_IsActive()) then
-		MailFrameTab2:Hide();
-		self.trialError:Show();
-	end
+	MailFrame_UpdateTrialState(self);
+end
+
+function MailFrame_UpdateTrialState(self)
+	local isTrialOrVeteran = GameLimitedMode_IsActive();
+	MailFrameTab2:SetShown(not isTrialOrVeteran);
+	self.trialError:SetShown(isTrialOrVeteran);
 end
 
 function MailFrame_OnEvent(self, event, ...)
@@ -101,6 +104,8 @@ function MailFrame_OnEvent(self, event, ...)
 	elseif ( event == "MAIL_UNLOCK_SEND_ITEMS") then
 		SendMailFrameLockSendMail:Hide();
 		StaticPopup_Hide("CONFIRM_MAIL_ITEM_UNREFUNDABLE");
+	elseif ( event == "TRIAL_STATUS_UPDATE" ) then
+		MailFrame_UpdateTrialState(self);
 	end
 end
 
@@ -148,7 +153,7 @@ end
 function InboxFrame_Update()
 	local numItems, totalItems = GetInboxNumItems();
 	local index = ((InboxFrame.pageNum - 1) * INBOXITEMS_TO_DISPLAY) + 1;
-	local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity;
+	local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity, firstItemLink;
 	local icon, button, expireTime, senderText, subjectText, buttonIcon;
 	
 	if ( totalItems > numItems ) then
@@ -164,7 +169,7 @@ function InboxFrame_Update()
 	for i=1, INBOXITEMS_TO_DISPLAY do
 		if ( index <= numItems ) then
 			-- Setup mail item
-			packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity, firstItemID = GetInboxHeaderInfo(index);
+			packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity, firstItemLink = GetInboxHeaderInfo(index);
 			
 			-- Set icon
 			if ( packageIcon ) and ( not isGM ) then
@@ -185,9 +190,10 @@ function InboxFrame_Update()
 			button.itemCount = itemCount;
 			SetItemButtonCount(button, firstItemQuantity);
 			if ( firstItemQuantity ) then
-				SetItemButtonQuality(button, select(3, GetItemInfo(firstItemID)), firstItemID);
+				SetItemButtonQuality(button, select(3, GetItemInfo(firstItemLink)), firstItemLink);
 			else
 				button.IconBorder:Hide();
+				button.IconOverlay:Hide();
 			end
 			
 			buttonIcon = _G["MailItem"..i.."ButtonIcon"];

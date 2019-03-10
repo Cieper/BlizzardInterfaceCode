@@ -19,7 +19,7 @@ function PlayerFrame_OnLoad(self)
 	self.statusSign = -1;
 	CombatFeedback_Initialize(self, PlayerHitIndicator, 30);
 	PlayerFrame_Update();
-	self:RegisterEvent("UNIT_LEVEL");
+	self:RegisterEvent("PLAYER_LEVEL_CHANGED");
 	self:RegisterEvent("UNIT_FACTION");
 	self:RegisterEvent("PLAYER_ENTERING_WORLD");
 	self:RegisterEvent("PLAYER_ENTER_COMBAT");
@@ -28,9 +28,6 @@ function PlayerFrame_OnLoad(self)
 	self:RegisterEvent("PLAYER_REGEN_ENABLED");
 	self:RegisterEvent("PLAYER_UPDATE_RESTING");
 	self:RegisterEvent("PARTY_LEADER_CHANGED");
-	self:RegisterEvent("PARTY_LOOT_METHOD_CHANGED");
-	self:RegisterEvent("VOICE_START");
-	self:RegisterEvent("VOICE_STOP");
 	self:RegisterEvent("GROUP_ROSTER_UPDATE");
 	self:RegisterEvent("READY_CHECK");
 	self:RegisterEvent("READY_CHECK_CONFIRM");
@@ -42,7 +39,7 @@ function PlayerFrame_OnLoad(self)
 	self:RegisterEvent("PVP_TIMER_UPDATE");
 	self:RegisterEvent("PLAYER_ROLES_ASSIGNED");
 	self:RegisterEvent("VARIABLES_LOADED");
-	self:RegisterEvent("HONOR_PRESTIGE_UPDATE");
+	self:RegisterEvent("HONOR_LEVEL_UPDATE");
 	self:RegisterUnitEvent("UNIT_COMBAT", "player", "vehicle");
 	self:RegisterUnitEvent("UNIT_MAXPOWER", "player", "vehicle");
 
@@ -102,15 +99,6 @@ function PlayerFrame_UpdatePartyLeader()
 		PlayerLeaderIcon:Hide();
 		PlayerGuideIcon:Hide();
 	end
-
-	local lootMethod;
-	local lootMaster;
-	lootMethod, lootMaster = GetLootMethod();
-	if ( lootMaster == 0 and IsInGroup() ) then
-		PlayerMasterIcon:Show();
-	else
-		PlayerMasterIcon:Hide();
-	end
 end
 
 function PlayerFrame_UpdatePvPStatus()
@@ -119,10 +107,11 @@ function PlayerFrame_UpdatePvPStatus()
 		if ( not PlayerPVPIcon:IsShown() ) then
 			PlaySound(SOUNDKIT.IG_PVP_UPDATE);
 		end
-		local prestige = UnitPrestige("player");
-		if (prestige > 0) then
+		local honorLevel = UnitHonorLevel("player");
+		local honorRewardInfo = C_PvP.GetHonorRewardInfo(honorLevel);
+		if (honorRewardInfo) then
 			PlayerPrestigePortrait:SetAtlas("honorsystem-portrait-neutral", false);
-			PlayerPrestigeBadge:SetTexture(GetPrestigeInfo(prestige));
+			PlayerPrestigeBadge:SetTexture(honorRewardInfo.badgeFileDataID);
 			PlayerPrestigePortrait:Show();
 			PlayerPrestigeBadge:Show();
 			PlayerPVPIcon:Hide();
@@ -145,8 +134,9 @@ function PlayerFrame_UpdatePvPStatus()
 			PlaySound(SOUNDKIT.IG_PVP_UPDATE);
 		end
 
-		local prestige = UnitPrestige("player");
-		if (prestige > 0) then
+		local honorLevel = UnitHonorLevel("player");
+		local honorRewardInfo = C_PvP.GetHonorRewardInfo(honorLevel);
+		if (honorRewardInfo) then
 			-- ugly special case handling for mercenary mode
 			if ( UnitIsMercenary("player") ) then
 				if ( factionGroup == "Horde" ) then
@@ -157,7 +147,7 @@ function PlayerFrame_UpdatePvPStatus()
 			end
 
 			PlayerPrestigePortrait:SetAtlas("honorsystem-portrait-"..factionGroup, false);
-			PlayerPrestigeBadge:SetTexture(GetPrestigeInfo(prestige));
+			PlayerPrestigeBadge:SetTexture(honorRewardInfo.badgeFileDataID);
 			PlayerPrestigePortrait:Show();
 			PlayerPrestigeBadge:Show();
 			PlayerPVPIcon:Hide();
@@ -196,10 +186,8 @@ function PlayerFrame_OnEvent(self, event, ...)
 	UnitFrame_OnEvent(self, event, ...);
 
 	local arg1, arg2, arg3, arg4, arg5 = ...;
-	if ( event == "UNIT_LEVEL" ) then
-		if ( arg1 == "player" ) then
-			PlayerFrame_Update();
-		end
+	if ( event == "PLAYER_LEVEL_CHANGED" ) then
+		PlayerFrame_Update();
 	elseif ( event == "UNIT_COMBAT" ) then
 		if ( arg1 == self.unit ) then
 			CombatFeedback_OnCombatEvent(self, arg2, arg3, arg4, arg5);
@@ -247,23 +235,6 @@ function PlayerFrame_OnEvent(self, event, ...)
 		PlayerFrame_UpdateGroupIndicator();
 		PlayerFrame_UpdatePartyLeader();
 		PlayerFrame_UpdateReadyCheck();
-	elseif ( event == "PARTY_LOOT_METHOD_CHANGED" ) then
-		local lootMethod;
-		local lootMaster;
-		lootMethod, lootMaster = GetLootMethod();
-		if ( lootMaster == 0 and IsInGroup() ) then
-			PlayerMasterIcon:Show();
-		else
-			PlayerMasterIcon:Hide();
-		end
-	elseif ( event == "VOICE_START") then
-		if ( arg1 == "player" ) then
-			PlayerFrame_UpdateVoiceStatus(true);
-		end
-	elseif ( event == "VOICE_STOP" ) then
-		if ( arg1 == "player" ) then
-			PlayerFrame_UpdateVoiceStatus(false);
-		end
 	elseif ( event == "PLAYTIME_CHANGED" ) then
 		PlayerFrame_UpdatePlaytime();
 	elseif ( event == "READY_CHECK" or event == "READY_CHECK_CONFIRM" ) then
@@ -317,7 +288,7 @@ function PlayerFrame_OnEvent(self, event, ...)
 		if ( PLAYER_FRAME_CASTBARS_SHOWN ) then
 			PlayerFrame_AttachCastBar();
 		end
-	elseif ( event == "HONOR_PRESTIGE_UPDATE" ) then
+	elseif ( event == "HONOR_LEVEL_UPDATE" ) then
 		PlayerFrame_UpdatePvPStatus();
 	end
 end
@@ -431,7 +402,6 @@ function PlayerFrame_ToVehicleArt(self, vehicleType)
 
 	PlayerName:SetPoint("CENTER",50,23);
 	PlayerLeaderIcon:SetPoint("TOPLEFT",40,-12);
-	PlayerMasterIcon:SetPoint("TOPLEFT",86,0);
 	PlayerFrameGroupIndicator:SetPoint("BOTTOMLEFT", PlayerFrame, "TOPLEFT", 97, -13);
 
 	PlayerFrameBackground:SetWidth(114);
@@ -454,7 +424,6 @@ function PlayerFrame_ToPlayerArt(self)
 	PlayerFrame_HideVehicleTexture();
 	PlayerName:SetPoint("CENTER",50,19);
 	PlayerLeaderIcon:SetPoint("TOPLEFT",40,-12);
-	PlayerMasterIcon:SetPoint("TOPLEFT",80,-10);
 	PlayerFrameGroupIndicator:SetPoint("BOTTOMLEFT", PlayerFrame, "TOPLEFT", 97, -20);
 	PlayerFrameHealthBar:SetWidth(119);
 	PlayerFrameHealthBar:SetPoint("TOPLEFT",106,-41);
@@ -589,7 +558,8 @@ function PlayerFrame_UpdateGroupIndicator()
 end
 
 function PlayerFrameDropDown_OnLoad (self)
-	UIDropDownMenu_Initialize(self, PlayerFrameDropDown_Initialize, "MENU");
+	UIDropDownMenu_SetInitializeFunction(self, PlayerFrameDropDown_Initialize);
+	UIDropDownMenu_SetDisplayMode(self, "MENU");
 end
 
 function PlayerFrameDropDown_Initialize ()
@@ -769,6 +739,8 @@ function PlayerFrame_ShowVehicleTexture()
 	elseif ( class == "PRIEST" ) then
 		PriestBarFrame:Hide();
 	end
+
+	ComboPointPlayerFrame:Setup();
 end
 
 
@@ -785,6 +757,8 @@ function PlayerFrame_HideVehicleTexture()
 	elseif ( class == "PRIEST" ) then
 		PriestBarFrame_CheckAndShow();
 	end
+
+	ComboPointPlayerFrame:Setup();
 end
 
 function PlayerFrame_OnDragStart(self)

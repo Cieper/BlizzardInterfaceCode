@@ -159,15 +159,10 @@
 		<NormalTexture parentKey="NormalTexture" />
 		<HighlightTexture parentKey="HighlightTexture" alphaMode="ADD" />
 
-		<Frames>
-			<Frame parentKey="Rank" inherits="ArtifactRelicRankTemplate">
-				<Anchors>
-					<Anchor point="BOTTOMLEFT" x="25" y="6"/>
-				</Anchors>
-			</Frame>
-		</Frames>
-
 		<Scripts>
+			<OnLoad>
+				self.UpdateTooltip = self:GetScript("OnEnter");
+			</OnLoad>
 			<OnEnter>
 				self:GetParent():OnRelicSlotMouseEnter(self);
 			</OnEnter>
@@ -313,10 +308,9 @@
 					<OnShow method="OnShow" />
 					<OnHide method="OnHide" />
 					<OnEvent method="OnEvent" />
-					<OnUpdate method="OnUpdate" />
 				</Scripts>
 			</Frame>
-				<ModelScene parentKey="Tier2ForgingScene" setAllPoints="true" inherits="ModelSceneMixinTemplate" frameLevel="300">
+			<ModelScene parentKey="Tier2ForgingScene" setAllPoints="true" inherits="NonInteractableModelSceneMixinTemplate" frameLevel="300">
 				<Layers>
 					<Layer level="OVERLAY" textureSubLevel="-1">
 						<Texture parentKey="BackgroundMiddle" alpha="0">
@@ -659,7 +653,6 @@
 						<Alpha childKey="CrestRune14" startDelay="0.53" smoothing="IN_OUT" duration="1" order="1" fromAlpha="1" toAlpha="0"/>
 						<Scripts>
 							<OnFinished>
-								self:GetParent():GetParent().Tier2ModelScene:Show();
 								self:GetParent().RunePulse:Play();
 							</OnFinished>
 						</Scripts>
@@ -709,18 +702,62 @@
 					</AnimationGroup>
 				</Animations>
 			</Frame>
-			<ModelScene parentKey="Tier2ModelScene" inherits="ModelSceneMixinTemplate" frameLevel="700">
-				<Size x="350" y="350"/>
+			<ModelScene parentKey="Tier2SlamEffectModelScene" inherits="NonInteractableModelSceneMixinTemplate" hidden="true" frameLevel="700">
+				<Size x="500" y="500"/>
 				<Anchors>
 					<Anchor point="CENTER" relativeKey="$parent.CrestFrame" relativePoint="CENTER" x="0" y="0"/>
 				</Anchors>
 			</ModelScene>
-			<ModelScene parentKey="Tier2SlamEffectModelScene" inherits="ModelSceneMixinTemplate" hidden="true" frameLevel="700">
-				<Size x="500" y="500"/>
-				<Anchors>
-					<Anchor point="CENTER" relativeKey="$parent.Tier2ModelScene" relativePoint="CENTER" x="0" y="0"/>
-				</Anchors>
-			</ModelScene>
+			<Frame parentKey="DisabledFrame" hidden="false" setAllPoints="true" frameLevel="2000">
+				<Layers>
+					<Layer level="BACKGROUND" textureSubLevel="-1">
+						<Texture parentKey="Background">
+							<Anchors>
+								<Anchor point="TOP" relativeKey="$parent.TitleContainer.Background"/>
+							</Anchors>
+						</Texture>
+					</Layer>
+					<Layer level="BACKGROUND">
+						<FontString parentKey="ArtifactName" inherits="Fancy24Font">
+							<Anchors>
+								<Anchor point="TOP" relativeKey="$parent.$parent.TitleContainer.ArtifactName"/>
+							</Anchors>
+							<Shadow>
+								<Offset x="1" y="-1" />
+								<Color r="0" g="0" b="0"/>
+							</Shadow>
+						</FontString>
+					</Layer>
+					<Layer level="BORDER">
+						<Texture setAllPoints="true" alpha="0.1">
+							<Color r="0.902" g="0.8" b="0.5"/>
+						</Texture>
+					</Layer>
+					<Layer level="ARTWORK">
+						<Texture setAllPoints="true" alpha="0.2">
+							<Color r="0" g="0" b="0"/>
+						</Texture>
+					</Layer>
+					<Layer level="OVERLAY" textureSubLevel="-1">
+						<Texture atlas="Artifacts-Retiring-Gradient" useAtlasSize="true">
+							<Size x="0" y="0"/>
+							<Anchors>
+								<Anchor point="BOTTOMLEFT"/>
+								<Anchor point="BOTTOMRIGHT"/>
+							</Anchors>
+						</Texture>
+					</Layer>
+					<Layer level="OVERLAY">
+						<FontString inherits="Fancy22Font" text="ARTIFACT_RETIRED">
+							<Size x="670"/>
+							<Anchors>
+								<Anchor point="BOTTOM" y="36"/>
+							</Anchors>
+							<Color r="0.902" g="0.8" b="0.5" a="1"/>
+						</FontString>
+					</Layer>
+				</Layers>
+			</Frame>
 		</Frames>
 		<Scripts>
 			<OnLoad method="OnLoad" />

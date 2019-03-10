@@ -37,11 +37,13 @@ end
 
 function GetPlayerFactionGroup()
 	local factionGroup = UnitFactionGroup("player");
-	-- this might be a rated BG or wargame and if so the player's faction might be altered
-	if ( not IsActiveBattlefieldArena() ) then
-		factionGroup = PLAYER_FACTION_GROUP[GetBattlefieldArenaFaction()];
+	if (C_PvP.IsPVPMap()) then
+		-- this might be a rated BG or wargame and if so the player's faction might be altered
+		if ( not IsActiveBattlefieldArena()) then
+			factionGroup = PLAYER_FACTION_GROUP[GetBattlefieldArenaFaction()];
+		end
 	end
-	
+
 	return factionGroup
 end
 
@@ -230,7 +232,7 @@ function StartTimer_SetTexNumbers(self, ...)
 	end
 	
 	if numberOffset > 0 then
-		PlaySound(SOUNDKIT.UI_BATTLEGROUND_COUNTDOWN_TIMER, "SFX", false);
+		PlaySound(SOUNDKIT.UI_BATTLEGROUND_COUNTDOWN_TIMER, "SFX", SOUNDKIT_ALLOW_DUPLICATES);
 		digits[1]:ClearAllPoints();
 		if self.anchorCenter or C_Commentator.IsSpectating() then
 			digits[1]:SetPoint("CENTER", TimerTracker, "CENTER", numberOffset - digits[1].hw, 0);

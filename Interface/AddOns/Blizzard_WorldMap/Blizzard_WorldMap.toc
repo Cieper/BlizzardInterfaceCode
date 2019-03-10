@@ -1,0 +1,13 @@
+## Interface: 80100
+## Title: Blizzard World Map UI
+## Secure: 1
+## Author: Blizzard Entertainment
+## RequiredDep: Blizzard_MapCanvas, Blizzard_SharedMapDataProviders
+## LoadOnDemand: 0
+
+MapTexturePreloader.lua
+WM_WorldQuestDataProvider.xml
+WM_InvasionDataProvider.xml
+WM_DebugDataProvider.xml
+Blizzard_WorldMapTemplates.xml
+Blizzard_WorldMap.xml

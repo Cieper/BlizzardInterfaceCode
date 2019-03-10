@@ -18,7 +18,7 @@ if tbl then
 	setfenv(1, tbl);
 
 	Import("C_ModelInfo");
-	
+
 	function nop() end;
 end
 ----------------
@@ -31,6 +31,14 @@ function ModelSceneMixin:OnLoad()
 	self.actorTemplate = "ModelSceneActorTemplate";
 	self.tagToActor = {};
 	self.tagToCamera = {};
+
+	if self.reversedLighting then
+		local lightPosX, lightPosY, lightPosZ = self:GetLightPosition();
+		self:SetLightPosition(-lightPosX, -lightPosY, lightPosZ);
+
+		local lightDirX, lightDirY, lightDirZ = self:GetLightDirection();
+		self:SetLightDirection(-lightDirX, -lightDirY, lightDirZ);
+	end
 end
 
 function ModelSceneMixin:ClearScene()
@@ -40,6 +48,10 @@ function ModelSceneMixin:ClearScene()
 	self:ReleaseAllCameras();
 
 	C_ModelInfo.ClearActiveModelScene(self);
+end
+
+function ModelSceneMixin:GetModelSceneID()
+	return self.modelSceneID; 
 end
 
 -- Adjusts this scene to mirror a model scene from static data without transition
@@ -140,9 +152,14 @@ function ModelSceneMixin:ReleaseAllActors()
 	end
 end
 
+local function OnReleased(actorPool, actor)
+	actor:OnReleased();
+	ActorPool_HideAndClearModel(actorPool, actor);
+end
+
 function ModelSceneMixin:AcquireActor()
 	if not self.actorPool then
-		self.actorPool = CreateActorPool(self, self.actorTemplate);
+		self.actorPool = CreateActorPool(self, self.actorTemplate, OnReleased);
 	end
 	return self.actorPool:Acquire();
 end
@@ -195,6 +212,10 @@ function ModelSceneMixin:SetActiveCamera(camera)
 		self.activeCamera = camera;
 
 		if self.activeCamera then
+			-- HACK: This should come from game data, hardcoded from values previously only in client
+			-- The camera will determine whether or not these ever need to update.
+			self:SetLightDirection(self:GetDefaultLightDirection());
+
 			self.activeCamera:OnActivated();
 		end
 	end
@@ -208,10 +229,21 @@ function ModelSceneMixin:IsRightMouseButtonDown()
 	return self.isRightButtonDown;
 end
 
+function ModelSceneMixin:Transform3DPointTo2D(x, y, z)
+	self:SynchronizeActiveCamera();
+	return self:Project3DPointTo2D(x, y, z);
+end
+
 -- "private" functions
 function ModelSceneMixin:OnUpdate(elapsed)
 	if self.activeCamera then
 		self.activeCamera:OnUpdate(elapsed);
+	end
+end
+
+function ModelSceneMixin:SynchronizeActiveCamera()
+	if self.activeCamera then
+		self.activeCamera:SynchronizeCamera();
 	end
 end
 
@@ -268,7 +300,7 @@ function ModelSceneMixin:CreateOrTransitionActorFromScene(oldTagToActor, actorID
 		return existingActor;
 	end
 
-	return self:AcquireAndInitializeActor(actorInfo); 
+	return self:AcquireAndInitializeActor(actorInfo);
 end
 
 function ModelSceneMixin:CreateCameraFromScene(modelSceneCameraID)
@@ -300,4 +332,18 @@ function ModelSceneMixin:CreateOrTransitionCameraFromScene(oldTagToCamera, camer
 
 		return self:CreateCameraFromScene(modelSceneCameraID);
 	end
+end
+
+function ModelSceneMixin:GetDefaultLightDirection()
+	local x = self.defaultLightDirectionX or 0;
+	local y = self.defaultLightDirectionY or 1;
+	local z = self.defaultLightDirectionZ or 0;
+
+	return x, y, z;
+end
+
+function ModelSceneMixin:SetDefaultLightDirection(x, y, z)
+	self.defaultLightDirectionX = x;
+	self.defaultLightDirectionY = y;
+	self.defaultLightDirectionZ = z;
 end

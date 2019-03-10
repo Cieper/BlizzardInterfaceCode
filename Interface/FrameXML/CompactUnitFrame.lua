@@ -11,7 +11,7 @@ function CompactUnitFrame_OnLoad(self)
 		self:Hide();
 		error("CompactUnitFrames must have a name");	--Sorry! Don't feel like re-writing unit popups.
 	end
-	
+
 	self:RegisterEvent("PLAYER_ENTERING_WORLD");
 	self:RegisterEvent("UNIT_DISPLAYPOWER");
 	self:RegisterEvent("UNIT_POWER_BAR_SHOW");
@@ -35,10 +35,12 @@ function CompactUnitFrame_OnLoad(self)
 	self:RegisterEvent("UNIT_ABSORB_AMOUNT_CHANGED");
 	self:RegisterEvent("UNIT_HEAL_ABSORB_AMOUNT_CHANGED");
 	self:RegisterEvent("UNIT_PHASE");
+	self:RegisterEvent("UNIT_FLAGS");
 	self:RegisterEvent("GROUP_JOINED");
 	self:RegisterEvent("GROUP_LEFT");
+	self:RegisterEvent("INCOMING_SUMMON_CHANGED");
 	-- also see CompactUnitFrame_UpdateUnitEvents for more events
-	
+
 	self.maxBuffs = 0;
 	self.maxDebuffs = 0;
 	self.maxDispelDebuffs = 0;
@@ -46,7 +48,6 @@ function CompactUnitFrame_OnLoad(self)
 
 	if not self.disableMouse then
 		CompactUnitFrame_SetUpClicks(self);
-		tinsert(UnitPopupFrames, self.dropDown:GetName());
 	end
 end
 
@@ -84,7 +85,7 @@ function CompactUnitFrame_OnEvent(self, event, ...)
 		elseif ( event == "UNIT_MAXPOWER" ) then
 			CompactUnitFrame_UpdateMaxPower(self);
 			CompactUnitFrame_UpdatePower(self);
-		elseif ( event == "UNIT_POWER" ) then
+		elseif ( event == "UNIT_POWER_UPDATE" ) then
 			CompactUnitFrame_UpdatePower(self);
 		elseif ( event == "UNIT_DISPLAYPOWER" or event == "UNIT_POWER_BAR_SHOW" or event == "UNIT_POWER_BAR_HIDE" ) then
 			CompactUnitFrame_UpdateMaxPower(self);
@@ -127,13 +128,17 @@ function CompactUnitFrame_OnEvent(self, event, ...)
 			CompactUnitFrame_UpdateHealPrediction(self);
 		elseif ( event == "PLAYER_FLAGS_CHANGED" ) then
 			CompactUnitFrame_UpdateStatusText(self);
-		elseif ( event == "UNIT_PHASE" ) then
+		elseif ( event == "UNIT_PHASE" or event == "UNIT_FLAGS" ) then
 			CompactUnitFrame_UpdateCenterStatusIcon(self);
 		elseif ( event == "GROUP_JOINED" ) then
 			CompactUnitFrame_UpdateAggroFlash(self);
 			CompactUnitFrame_UpdateHealthBorder(self);
 		elseif ( event == "GROUP_LEFT" ) then
 			CompactUnitFrame_UpdateHealthBorder(self);
+		elseif ( event == "UNIT_CLASSIFICATION_CHANGED" ) then
+			CompactUnitFrame_UpdateClassificationIndicator(self);
+		elseif ( event == "INCOMING_SUMMON_CHANGED" ) then
+			CompactUnitFrame_UpdateCenterStatusIcon(self);
 		end
 	end
 end
@@ -226,12 +231,13 @@ function CompactUnitFrame_UpdateUnitEvents(frame)
 	frame:RegisterUnitEvent("UNIT_HEALTH", unit, displayedUnit);
 	frame:RegisterUnitEvent("UNIT_HEALTH_FREQUENT", unit, displayedUnit);
 	frame:RegisterUnitEvent("UNIT_MAXPOWER", unit, displayedUnit);
-	frame:RegisterUnitEvent("UNIT_POWER", unit, displayedUnit);
+	frame:RegisterUnitEvent("UNIT_POWER_UPDATE", unit, displayedUnit);
 	frame:RegisterUnitEvent("UNIT_AURA", unit, displayedUnit);
 	frame:RegisterUnitEvent("UNIT_THREAT_SITUATION_UPDATE", unit, displayedUnit);
 	frame:RegisterUnitEvent("UNIT_THREAT_LIST_UPDATE", unit, displayedUnit);
 	frame:RegisterUnitEvent("UNIT_HEAL_PREDICTION", unit, displayedUnit);
 	frame:RegisterUnitEvent("PLAYER_FLAGS_CHANGED", unit, displayedUnit);
+	frame:RegisterUnitEvent("UNIT_CLASSIFICATION_CHANGED", unit, displayedUnit);
 end
 
 function CompactUnitFrame_UnregisterEvents(frame)
@@ -301,21 +307,30 @@ function CompactUnitFrame_UpdateAll(frame)
 		CompactUnitFrame_UpdateAuras(frame);
 		CompactUnitFrame_UpdateCenterStatusIcon(frame);
 		CompactUnitFrame_UpdateClassificationIndicator(frame);
+		CompactUnitFrame_UpdateWidgetSet(frame);
 	end
 end
 
 function CompactUnitFrame_UpdateInVehicle(frame)
-	local hasValidVehicleUI = UnitHasVehicleUI(frame.unit);
+	local shouldTargetVehicle = UnitHasVehicleUI(frame.unit);
 	local unitVehicleToken;
-	if ( hasValidVehicleUI ) then
+
+	if ( shouldTargetVehicle ) then
+		local raidID = UnitInRaid(frame.unit);
+		if ( raidID and not UnitTargetsVehicleInRaidUI(frame.unit) ) then
+			shouldTargetVehicle = false;
+		end
+	end
+
+	if ( shouldTargetVehicle ) then
 		local prefix, id, suffix = string.match(frame.unit, "([^%d]+)([%d]*)(.*)")
 		unitVehicleToken = prefix.."pet"..id..suffix;
 		if ( not UnitExists(unitVehicleToken) ) then
-			hasValidVehicleUI = false;
+			shouldTargetVehicle = false;
 		end
 	end
-	
-	if ( hasValidVehicleUI ) then
+
+	if ( shouldTargetVehicle ) then
 		if ( not frame.hasValidVehicleDisplay ) then
 			frame.hasValidVehicleDisplay = true;
 			frame.displayedUnit = unitVehicleToken;
@@ -341,6 +356,7 @@ function CompactUnitFrame_UpdateVisible(frame)
 		frame.unitExists = true;
 		frame:Show();
 	else
+		CompactUnitFrame_ClearWidgetSet(frame);
 		frame:Hide();
 		frame.unitExists = false;
 	end
@@ -372,7 +388,7 @@ function CompactUnitFrame_UpdateHealthColor(frame)
 			--Try to color it by class.
 			local localizedClass, englishClass = UnitClass(frame.unit);
 			local classColor = RAID_CLASS_COLORS[englishClass];
-			if ( (frame.optionTable.allowClassColorsForNPCs or UnitIsPlayer(frame.unit)) and classColor and frame.optionTable.useClassColors ) then
+			if ( (frame.optionTable.allowClassColorsForNPCs or UnitIsPlayer(frame.unit) or UnitTreatAsPlayerForDisplay(frame.unit)) and classColor and frame.optionTable.useClassColors ) then
 				-- Use class colors for players if class color option is turned on
 				r, g, b = classColor.r, classColor.g, classColor.b;
 			elseif ( CompactUnitFrame_IsTapDenied(frame) ) then
@@ -404,7 +420,7 @@ function CompactUnitFrame_UpdateHealthColor(frame)
 		else
 			frame.selectionHighlight:SetVertexColor(1, 1, 1);
 		end
-		
+
 		frame.healthBar.r, frame.healthBar.g, frame.healthBar.b = r, g, b;
 	end
 end
@@ -430,7 +446,7 @@ function CompactUnitFrame_UpdateHealth(frame)
 			frame.healthBar:SetSmoothedValue(health);
 		end
 	else
-		frame.healthBar:SetValue(health);
+		PixelUtil.SetStatusBarValue(frame.healthBar, health);
 	end
 end
 
@@ -443,7 +459,7 @@ local function CompactUnitFrame_GetDisplayedPowerID(frame)
 	end
 end
 
-function CompactUnitFrame_UpdateMaxPower(frame)	
+function CompactUnitFrame_UpdateMaxPower(frame)
 	if frame.powerBar then
 		frame.powerBar:SetMinMaxValues(0, UnitPowerMax(frame.displayedUnit, CompactUnitFrame_GetDisplayedPowerID(frame)));
 	end
@@ -451,7 +467,7 @@ end
 
 function CompactUnitFrame_UpdatePower(frame)
 	if frame.powerBar then
-		frame.powerBar:SetValue(UnitPower(frame.displayedUnit, CompactUnitFrame_GetDisplayedPowerID(frame)));
+		PixelUtil.SetStatusBarValue(frame.powerBar, UnitPower(frame.displayedUnit, CompactUnitFrame_GetDisplayedPowerID(frame)));
 	end
 end
 
@@ -545,6 +561,7 @@ function CompactUnitFrame_UpdateAuras(frame)
 	CompactUnitFrame_UpdateBuffs(frame);
 	CompactUnitFrame_UpdateDebuffs(frame);
 	CompactUnitFrame_UpdateDispellableDebuffs(frame);
+	CompactUnitFrame_UpdateClassificationIndicator(frame);
 end
 
 function CompactUnitFrame_UpdateSelectionHighlight(frame)
@@ -567,7 +584,7 @@ function CompactUnitFrame_UpdateAggroHighlight(frame)
 		end
 		return;
 	end
-	
+
 	local status = UnitThreatSituation(frame.displayedUnit);
 	if ( status and status > 0 ) then
 		frame.aggroHighlight:SetVertexColor(GetThreatStatusColor(status));
@@ -641,7 +658,7 @@ function CompactUnitFrame_UpdateInRange(frame)
 	if ( not frame.optionTable.fadeOutOfRange ) then
 		return;
 	end
-	
+
 	local inRange, checkedRange = UnitInRange(frame.displayedUnit);
 	if ( checkedRange and not inRange ) then	--If we weren't able to check the range for some reason, we'll just treat them as in-range (for example, enemy units)
 		frame:SetAlpha(0.55);
@@ -663,11 +680,14 @@ function CompactUnitFrame_UpdateDistance(frame)
 end
 
 function CompactUnitFrame_UpdateStatusText(frame)
+	if ( not frame.statusText ) then
+		return;
+	end
 	if ( not frame.optionTable.displayStatusText ) then
 		frame.statusText:Hide();
 		return;
 	end
-	
+
 	if ( not UnitIsConnected(frame.unit) ) then
 		frame.statusText:SetText(PLAYER_OFFLINE)
 		frame.statusText:Show();
@@ -700,11 +720,11 @@ local MAX_INCOMING_HEAL_OVERFLOW = 1.05;
 function CompactUnitFrame_UpdateHealPrediction(frame)
 	local _, maxHealth = frame.healthBar:GetMinMaxValues();
 	local health = frame.healthBar:GetValue();
-	
+
 	if ( maxHealth <= 0 ) then
 		return;
 	end
-	
+
 	if ( not frame.optionTable.displayHealPrediction ) then
 		frame.myHealPrediction:Hide();
 		frame.otherHealPrediction:Hide();
@@ -721,7 +741,7 @@ function CompactUnitFrame_UpdateHealPrediction(frame)
 	local myIncomingHeal = UnitGetIncomingHeals(frame.displayedUnit, "player") or 0;
 	local allIncomingHeal = UnitGetIncomingHeals(frame.displayedUnit) or 0;
 	local totalAbsorb = UnitGetTotalAbsorbs(frame.displayedUnit) or 0;
-	
+
 	--We don't fill outside the health bar with healAbsorbs.  Instead, an overHealAbsorbGlow is shown.
 	local myCurrentHealAbsorb = UnitGetTotalHealAbsorbs(frame.displayedUnit) or 0;
 	if ( health < myCurrentHealAbsorb ) then
@@ -730,14 +750,14 @@ function CompactUnitFrame_UpdateHealPrediction(frame)
 	else
 		frame.overHealAbsorbGlow:Hide();
 	end
-	
+
 	--See how far we're going over the health bar and make sure we don't go too far out of the frame.
 	if ( health - myCurrentHealAbsorb + allIncomingHeal > maxHealth * MAX_INCOMING_HEAL_OVERFLOW ) then
 		allIncomingHeal = maxHealth * MAX_INCOMING_HEAL_OVERFLOW - health + myCurrentHealAbsorb;
 	end
-	
+
 	local otherIncomingHeal = 0;
-	
+
 	--Split up incoming heals.
 	if ( allIncomingHeal >= myIncomingHeal ) then
 		otherIncomingHeal = allIncomingHeal - myIncomingHeal;
@@ -751,7 +771,7 @@ function CompactUnitFrame_UpdateHealPrediction(frame)
 		if ( totalAbsorb > 0 ) then
 			overAbsorb = true;
 		end
-		
+
 		if ( allIncomingHeal > myCurrentHealAbsorb ) then
 			totalAbsorb = max(0,maxHealth - (health - myCurrentHealAbsorb + allIncomingHeal));
 		else
@@ -763,20 +783,20 @@ function CompactUnitFrame_UpdateHealPrediction(frame)
 	else
 		frame.overAbsorbGlow:Hide();
 	end
-	
+
 	local healthTexture = frame.healthBar:GetStatusBarTexture();
-	
+
 	local myCurrentHealAbsorbPercent = myCurrentHealAbsorb / maxHealth;
-	
+
 	local healAbsorbTexture = nil;
-	
+
 	--If allIncomingHeal is greater than myCurrentHealAbsorb, then the current
 	--heal absorb will be completely overlayed by the incoming heals so we don't show it.
 	if ( myCurrentHealAbsorb > allIncomingHeal ) then
 		local shownHealAbsorb = myCurrentHealAbsorb - allIncomingHeal;
 		local shownHealAbsorbPercent = shownHealAbsorb / maxHealth;
 		healAbsorbTexture = CompactUnitFrameUtil_UpdateFillBar(frame, healthTexture, frame.myHealAbsorb, shownHealAbsorb, -shownHealAbsorbPercent);
-		
+
 		--If there are incoming heals the left shadow would be overlayed by the incoming heals
 		--so it isn't shown.
 		if ( allIncomingHeal > 0 ) then
@@ -786,7 +806,7 @@ function CompactUnitFrame_UpdateHealPrediction(frame)
 			frame.myHealAbsorbLeftShadow:SetPoint("BOTTOMLEFT", healAbsorbTexture, "BOTTOMLEFT", 0, 0);
 			frame.myHealAbsorbLeftShadow:Show();
 		end
-		
+
 		-- The right shadow is only shown if there are absorbs on the health bar.
 		if ( totalAbsorb > 0 ) then
 			frame.myHealAbsorbRightShadow:SetPoint("TOPLEFT", healAbsorbTexture, "TOPRIGHT", -8, 0);
@@ -800,12 +820,12 @@ function CompactUnitFrame_UpdateHealPrediction(frame)
 		frame.myHealAbsorbRightShadow:Hide();
 		frame.myHealAbsorbLeftShadow:Hide();
 	end
-	
+
 	--Show myIncomingHeal on the health bar.
 	local incomingHealsTexture = CompactUnitFrameUtil_UpdateFillBar(frame, healthTexture, frame.myHealPrediction, myIncomingHeal, -myCurrentHealAbsorbPercent);
 	--Append otherIncomingHeal on the health bar.
 	incomingHealsTexture = CompactUnitFrameUtil_UpdateFillBar(frame, incomingHealsTexture, frame.otherHealPrediction, otherIncomingHeal);
-	
+
 	--Appen absorbs to the correct section of the health bar.
 	local appendTexture = nil;
 	if ( healAbsorbTexture ) then
@@ -830,7 +850,7 @@ function CompactUnitFrameUtil_UpdateFillBar(frame, previousTexture, bar, amount,
 		end
 		return previousTexture;
 	end
-	
+
 	local barOffsetX = 0;
 	if ( barOffsetXPercent ) then
 		barOffsetX = totalWidth * barOffsetXPercent;
@@ -887,7 +907,7 @@ function CompactUnitFrame_UpdateReadyCheck(frame)
 	if ( not frame.readyCheckIcon or frame.readyCheckDecay and GetReadyCheckTimeLeft() <= 0 ) then
 		return;
 	end
-	
+
 	local readyCheckStatus = GetReadyCheckStatus(frame.unit);
 	frame.readyCheckStatus = readyCheckStatus;
 	if ( readyCheckStatus == "ready" ) then
@@ -910,7 +930,7 @@ function CompactUnitFrame_FinishReadyCheck(frame)
 	end
 	if ( frame:IsVisible() ) then
 		frame.readyCheckDecay = CUF_READY_CHECK_DECAY_TIME;
-		
+
 		if ( frame.readyCheckStatus == "waiting" ) then	--If you haven't responded, you are not ready.
 			frame.readyCheckIcon:SetTexture(READY_CHECK_NOT_READY_TEXTURE);
 			frame.readyCheckIcon:Show();
@@ -946,11 +966,39 @@ function CompactUnitFrame_UpdateCenterStatusIcon(frame)
 			frame.centerStatusIcon.border:Hide();
 			frame.centerStatusIcon.tooltip = nil;
 			frame.centerStatusIcon:Show();
-		elseif ( frame.optionTable.displayInOtherPhase and frame.inDistance and not UnitInPhase(frame.unit)) then
+		elseif ( frame.optionTable.displayIncomingSummon and C_IncomingSummon.HasIncomingSummon(frame.unit) ) then
+			local status = C_IncomingSummon.IncomingSummonStatus(frame.unit);
+			if(status == Enum.SummonStatus.Pending) then
+				frame.centerStatusIcon.texture:SetAtlas("Raid-Icon-SummonPending");
+				frame.centerStatusIcon.texture:SetTexCoord(0, 1, 0, 1);
+				frame.centerStatusIcon.border:Hide();
+				frame.centerStatusIcon.tooltip = INCOMING_SUMMON_TOOLTIP_SUMMON_PENDING;
+				frame.centerStatusIcon:Show();
+			elseif( status == Enum.SummonStatus.Accepted ) then
+				frame.centerStatusIcon.texture:SetAtlas("Raid-Icon-SummonAccepted");
+				frame.centerStatusIcon.texture:SetTexCoord(0, 1, 0, 1);
+				frame.centerStatusIcon.border:Hide();
+				frame.centerStatusIcon.tooltip = INCOMING_SUMMON_TOOLTIP_SUMMON_ACCEPTED;
+				frame.centerStatusIcon:Show();
+			elseif( status == Enum.SummonStatus.Declined ) then
+				frame.centerStatusIcon.texture:SetAtlas("Raid-Icon-SummonDeclined");
+				frame.centerStatusIcon.texture:SetTexCoord(0, 1, 0, 1);
+				frame.centerStatusIcon.border:Hide();
+				frame.centerStatusIcon.tooltip = INCOMING_SUMMON_TOOLTIP_SUMMON_DECLINED;
+				frame.centerStatusIcon:Show();
+			end
+		elseif ( frame.optionTable.displayInOtherPhase and frame.inDistance and (not UnitInPhase(frame.unit) or UnitIsWarModePhased(frame.unit)) ) then
 			frame.centerStatusIcon.texture:SetTexture("Interface\\TargetingFrame\\UI-PhasingIcon");
 			frame.centerStatusIcon.texture:SetTexCoord(0.15625, 0.84375, 0.15625, 0.84375);
 			frame.centerStatusIcon.border:Hide();
 			frame.centerStatusIcon.tooltip = PARTY_PHASED_MESSAGE;
+			if ( UnitIsWarModePhased(frame.unit) ) then
+				if C_PvP.IsWarModeDesired() then
+					frame.centerStatusIcon.tooltip = PARTY_PLAYER_WARMODE_DISABLED;
+				else
+					frame.centerStatusIcon.tooltip = PARTY_PLAYER_WARMODE_ENABLED;
+				end
+			end
 			frame.centerStatusIcon:Show();
 		else
 			frame.centerStatusIcon:Hide();
@@ -959,19 +1007,62 @@ function CompactUnitFrame_UpdateCenterStatusIcon(frame)
 end
 
 function CompactUnitFrame_UpdateClassificationIndicator(frame)
-	if ( frame.optionTable.showClassificationIndicator ) then
-		local classification = UnitClassification(frame.unit);
-		if ( classification == "elite" or classification == "worldboss" ) then
-			frame.classificationIndicator:SetAtlas("nameplates-icon-elite-gold");
-			frame.classificationIndicator:Show();
-		elseif ( classification == "rareelite" ) then
-			frame.classificationIndicator:SetAtlas("nameplates-icon-elite-silver");
-			frame.classificationIndicator:Show();
+	if frame.classificationIndicator then
+		if frame.optionTable.showPvPClassificationIndicator and CompactUnitFrame_UpdatePvPClassificationIndicator(frame) then
+			return;
+		elseif ( frame.optionTable.showClassificationIndicator ) then
+			local classification = UnitClassification(frame.unit);
+			if ( classification == "elite" or classification == "worldboss" ) then
+				frame.classificationIndicator:SetAtlas("nameplates-icon-elite-gold");
+				frame.classificationIndicator:Show();
+			elseif ( classification == "rareelite" ) then
+				frame.classificationIndicator:SetAtlas("nameplates-icon-elite-silver");
+				frame.classificationIndicator:Show();
+			else
+				frame.classificationIndicator:Hide();
+			end
 		else
 			frame.classificationIndicator:Hide();
 		end
-	elseif ( frame.classificationIndicator ) then
-		frame.classificationIndicator:Hide();
+	end
+end
+
+local function WidgetsLayout(widgetContainer, sortedWidgets)
+	local widgetsWidth = 0;
+	local maxWidgetHeight = 0;
+
+	for index, widgetFrame in ipairs(sortedWidgets) do
+		if ( index == 1 ) then
+			widgetFrame:SetPoint("LEFT", widgetContainer, "LEFT", 0, 0);
+		else
+			local relative = sortedWidgets[index - 1];
+			widgetFrame:SetPoint("LEFT", relative, "RIGHT", 2, 0);
+		end
+
+		widgetsWidth = widgetsWidth + widgetFrame:GetWidth();
+
+		local widgetHeight = widgetFrame:GetHeight();
+		if widgetHeight > maxWidgetHeight then
+			maxWidgetHeight = widgetHeight;
+		end
+	end
+
+	widgetContainer:SetHeight(math.max(maxWidgetHeight, 1));
+	widgetContainer:SetWidth(math.max(widgetsWidth, 1));
+end
+
+function CompactUnitFrame_UpdateWidgetSet(frame)
+	if not frame.WidgetContainer then
+		return;
+	end
+
+	local widgetSetID = UnitWidgetSet(frame.unit);
+	frame.WidgetContainer:RegisterForWidgetSet(widgetSetID, WidgetsLayout);
+end
+
+function CompactUnitFrame_ClearWidgetSet(frame)
+	if frame.WidgetContainer then
+		frame.WidgetContainer:UnregisterForWidgetSet();
 	end
 end
 
@@ -981,7 +1072,7 @@ function CompactUnitFrame_UpdateBuffs(frame)
 		CompactUnitFrame_HideAllBuffs(frame);
 		return;
 	end
-	
+
 	local index = 1;
 	local frameNum = 1;
 	local filter = nil;
@@ -1009,7 +1100,7 @@ function CompactUnitFrame_UpdateDebuffs(frame)
 		CompactUnitFrame_HideAllDebuffs(frame);
 		return;
 	end
-	
+
 	local index = 1;
 	local frameNum = 1;
 	local filter = nil;
@@ -1050,7 +1141,7 @@ function CompactUnitFrame_UpdateDebuffs(frame)
 		end
 		index = index + 1;
 	end
-	
+
 	--Now we go through the debuffs with a priority (e.g. Weakened Soul and Forbearance)
 	index = 1;
 	while ( frameNum <= maxDebuffs ) do
@@ -1066,11 +1157,11 @@ function CompactUnitFrame_UpdateDebuffs(frame)
 		end
 		index = index + 1;
 	end
-	
+
 	if ( frame.optionTable.displayOnlyDispellableDebuffs ) then
 		filter = "RAID";
 	end
-	
+
 	index = 1;
 	--Now, we display all normal debuffs.
 	if ( frame.optionTable.displayNonBossDebuffs ) then
@@ -1089,7 +1180,7 @@ function CompactUnitFrame_UpdateDebuffs(frame)
 		index = index + 1;
 	end
 	end
-	
+
 	for i=frameNum, frame.maxDebuffs do
 		local debuffFrame = frame.debuffFrames[i];
 		debuffFrame:Hide();
@@ -1102,19 +1193,19 @@ function CompactUnitFrame_UpdateDispellableDebuffs(frame)
 		CompactUnitFrame_HideAllDispelDebuffs(frame);
 		return;
 	end
-	
+
 	--Clear what we currently have.
 	for debuffType, display in pairs(dispellableDebuffTypes) do
 		if ( display ) then
 			frame["hasDispel"..debuffType] = false;
 		end
 	end
-	
+
 	local index = 1;
 	local frameNum = 1;
 	local filter = "RAID";	--Only dispellable debuffs.
 	while ( frameNum <= frame.maxDispelDebuffs ) do
-		local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId = UnitDebuff(frame.displayedUnit, index, filter);
+		local name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId = UnitDebuff(frame.displayedUnit, index, filter);
 		if ( dispellableDebuffTypes[debuffType] and not frame["hasDispel"..debuffType] ) then
 			frame["hasDispel"..debuffType] = true;
 			local dispellDebuffFrame = frame.dispelDebuffFrames[frameNum];
@@ -1131,12 +1222,37 @@ function CompactUnitFrame_UpdateDispellableDebuffs(frame)
 	end
 end
 
+local PvPClassificationIcons = {
+	[Enum.PvpUnitClassification.FlagCarrierHorde] = "nameplates-icon-flag-horde",
+	[Enum.PvpUnitClassification.FlagCarrierAlliance] = "nameplates-icon-flag-alliance",
+	[Enum.PvpUnitClassification.FlagCarrierNeutral] = "nameplates-icon-flag-neutral",
+	[Enum.PvpUnitClassification.CartRunnerHorde] = "nameplates-icon-cart-horde",
+	[Enum.PvpUnitClassification.CartRunnerAlliance] = "nameplates-icon-cart-alliance",
+	[Enum.PvpUnitClassification.AssassinHorde] = "nameplates-icon-bounty-horde",
+	[Enum.PvpUnitClassification.AssassinAlliance] = "nameplates-icon-bounty-alliance",
+	[Enum.PvpUnitClassification.OrbCarrierBlue] = "nameplates-icon-orb-blue",
+	[Enum.PvpUnitClassification.OrbCarrierGreen] = "nameplates-icon-orb-green",
+	[Enum.PvpUnitClassification.OrbCarrierOrange] = "nameplates-icon-orb-orange",
+	[Enum.PvpUnitClassification.OrbCarrierPurple] = "nameplates-icon-orb-purple",
+}
+
+function CompactUnitFrame_UpdatePvPClassificationIndicator(frame)
+	local classificationIcon = PvPClassificationIcons[UnitPvpClassification(frame.unit)];
+
+	if classificationIcon then
+		frame.classificationIndicator:SetAtlas(classificationIcon);
+		frame.classificationIndicator:Show();
+	end
+
+	return classificationIcon ~= nil;
+end
+
 --Utility Functions
 function CompactUnitFrame_UtilShouldDisplayBuff(unit, index, filter)
-	local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura = UnitBuff(unit, index, filter);
-	
+	local name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura = UnitBuff(unit, index, filter);
+
 	local hasCustom, alwaysShowMine, showForMySpec = SpellGetVisibilityInfo(spellId, UnitAffectingCombat("player") and "RAID_INCOMBAT" or "RAID_OUTOFCOMBAT");
-	
+
 	if ( hasCustom ) then
 		return showForMySpec or (alwaysShowMine and (unitCaster == "player" or unitCaster == "pet" or unitCaster == "vehicle"));
 	else
@@ -1153,11 +1269,11 @@ function CompactUnitFrame_HideAllBuffs(frame)
 end
 
 function CompactUnitFrame_UtilSetBuff(buffFrame, unit, index, filter)
-	local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura = UnitBuff(unit, index, filter);
+	local name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura = UnitBuff(unit, index, filter);
 	buffFrame.icon:SetTexture(icon);
 	if ( count > 1 ) then
 		local countText = count;
-		if ( count >= 10 ) then
+		if ( count >= 100 ) then
 			countText = BUFF_STACKS_OVERFLOW;
 		end
 		buffFrame.count:Show();
@@ -1177,8 +1293,8 @@ function CompactUnitFrame_UtilSetBuff(buffFrame, unit, index, filter)
 end
 
 function CompactUnitFrame_UtilShouldDisplayDebuff(unit, index, filter)
-	local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitDebuff(unit, index, filter);
-	
+	local name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitDebuff(unit, index, filter);
+
 	local hasCustom, alwaysShowMine, showForMySpec = SpellGetVisibilityInfo(spellId, UnitAffectingCombat("player") and "RAID_INCOMBAT" or "RAID_OUTOFCOMBAT");
 	if ( hasCustom ) then
 		return showForMySpec or (alwaysShowMine and (unitCaster == "player" or unitCaster == "pet" or unitCaster == "vehicle") );	--Would only be "mine" in the case of something like forbearance.
@@ -1189,29 +1305,25 @@ end
 
 function CompactUnitFrame_UtilIsBossAura(unit, index, filter, checkAsBuff)
 	-- make sure you are using the correct index here!	allAurasIndex ~= debuffIndex
-	local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura;
+	local name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura;
 	if (checkAsBuff) then
-		name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitBuff(unit, index, filter);
+		name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitBuff(unit, index, filter);
 	else
-		name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitDebuff(unit, index, filter);
+		name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitDebuff(unit, index, filter);
 	end
 	return isBossAura;
 end
 
 function CompactUnitFrame_UtilIsPriorityDebuff(unit, index, filter)
-	local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitDebuff(unit, index, filter);
-	
+	local name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId, canApplyAura, isBossAura = UnitDebuff(unit, index, filter);
+
 	local _, classFilename = UnitClass("player");
 	if ( classFilename == "PALADIN" ) then
 		if ( spellId == 25771 ) then	--Forbearance
 			return true;
 		end
-	elseif ( classFilename == "PRIEST" ) then
-		if ( spellId == 6788 ) then	--Weakened Soul
-			return true;
-		end
 	end
-	
+
 	return false;
 end
 
@@ -1227,17 +1339,17 @@ function CompactUnitFrame_UtilSetDebuff(debuffFrame, unit, index, filter, isBoss
 	-- make sure you are using the correct index here!
 	--isBossAura says make this look large.
 	--isBossBuff looks in HELPFULL auras otherwise it looks in HARMFULL ones
-	local name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId;
+	local name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId;
 	if (isBossBuff) then
-		name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId = UnitBuff(unit, index, filter);
+		name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId = UnitBuff(unit, index, filter);
 	else
-		name, rank, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId = UnitDebuff(unit, index, filter);
+		name, icon, count, debuffType, duration, expirationTime, unitCaster, canStealOrPurge, _, spellId = UnitDebuff(unit, index, filter);
 	end
 	debuffFrame.filter = filter;
 	debuffFrame.icon:SetTexture(icon);
 	if ( count > 1 ) then
 		local countText = count;
-		if ( count >= 10 ) then
+		if ( count >= 100 ) then
 			countText = BUFF_STACKS_OVERFLOW;
 		end
 		debuffFrame.count:Show();
@@ -1253,7 +1365,7 @@ function CompactUnitFrame_UtilSetDebuff(debuffFrame, unit, index, filter, isBoss
 	else
 		CooldownFrame_Clear(debuffFrame.cooldown);
 	end
-	
+
 	local color = DebuffTypeColor[debuffType] or DebuffTypeColor["none"];
 	debuffFrame.border:SetVertexColor(color.r, color.g, color.b);
 
@@ -1264,7 +1376,7 @@ function CompactUnitFrame_UtilSetDebuff(debuffFrame, unit, index, filter, isBoss
 	else
 		debuffFrame:SetSize(debuffFrame.baseSize, debuffFrame.baseSize);
 	end
-	
+
 	debuffFrame:Show();
 end
 
@@ -1340,6 +1452,7 @@ DefaultCompactUnitFrameOptions = {
 	displayNonBossDebuffs = true,
 	healthText = "none",
 	displayIncomingResurrect = true,
+	displayIncomingSummon = true,
 	displayInOtherGroup = true,
 	displayInOtherPhase = true,
 
@@ -1362,17 +1475,17 @@ function DefaultCompactUnitFrameSetup(frame)
 	local componentScale = min(options.height / NATIVE_UNIT_FRAME_HEIGHT, options.width / NATIVE_UNIT_FRAME_WIDTH);
 
 	frame:SetAlpha(1);
-	
+
 	frame:SetSize(options.width, options.height);
 	local powerBarHeight = 8;
 	local powerBarUsedHeight = options.displayPowerBar and powerBarHeight or 0;
-	
+
 	frame.background:SetTexture("Interface\\RaidFrame\\Raid-Bar-Hp-Bg");
 	frame.background:SetTexCoord(0, 1, 0, 0.53125);
 	frame.healthBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1);
-	
+
 	frame.healthBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1 + powerBarUsedHeight);
-	
+
 	frame.healthBar:SetStatusBarTexture("Interface\\RaidFrame\\Raid-Bar-Hp-Fill", "BORDER");
 
 	if ( frame.powerBar ) then
@@ -1390,7 +1503,7 @@ function DefaultCompactUnitFrameSetup(frame)
 			frame.powerBar:Hide();
 		end
 	end
-	
+
 	frame.myHealPrediction:ClearAllPoints();
 	frame.myHealPrediction:SetColorTexture(1,1,1);
 	frame.myHealPrediction:SetGradient("VERTICAL", 8/255, 93/255, 72/255, 11/255, 136/255, 105/255);
@@ -1423,29 +1536,29 @@ function DefaultCompactUnitFrameSetup(frame)
 	frame.roleIcon:ClearAllPoints();
 	frame.roleIcon:SetPoint("TOPLEFT", 3, -2);
 	frame.roleIcon:SetSize(12, 12);
-	
+
 	frame.name:SetPoint("TOPLEFT", frame.roleIcon, "TOPRIGHT", 0, -1);
 	frame.name:SetPoint("TOPRIGHT", -3, -3);
 	frame.name:SetJustifyH("LEFT");
-	
+
 	local NATIVE_FONT_SIZE = 12;
 	local fontName, fontSize, fontFlags = frame.statusText:GetFont();
 	frame.statusText:SetFont(fontName, NATIVE_FONT_SIZE * componentScale, fontFlags);
 	frame.statusText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 3, options.height / 3 - 2);
 	frame.statusText:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -3, options.height / 3 - 2);
 	frame.statusText:SetHeight(12 * componentScale);
-	
+
 	local readyCheckSize = 15 * componentScale;
 	frame.readyCheckIcon:ClearAllPoints();
 	frame.readyCheckIcon:SetPoint("BOTTOM", frame, "BOTTOM", 0, options.height / 3 - 4);
 	frame.readyCheckIcon:SetSize(readyCheckSize, readyCheckSize);
-	
+
 	local buffSize = 11 * componentScale;
-	
+
 	CompactUnitFrame_SetMaxBuffs(frame, 3);
 	CompactUnitFrame_SetMaxDebuffs(frame, 3);
 	CompactUnitFrame_SetMaxDispelDebuffs(frame, 3);
-	
+
 	local buffPos, buffRelativePoint, buffOffset = "BOTTOMRIGHT", "BOTTOMLEFT", CUF_AURA_BOTTOM_OFFSET + powerBarUsedHeight;
 	frame.buffFrames[1]:ClearAllPoints();
 	frame.buffFrames[1]:SetPoint(buffPos, frame, "BOTTOMRIGHT", -3, buffOffset);
@@ -1456,7 +1569,7 @@ function DefaultCompactUnitFrameSetup(frame)
 		end
 		frame.buffFrames[i]:SetSize(buffSize, buffSize);
 	end
-	
+
 	local debuffPos, debuffRelativePoint, debuffOffset = "BOTTOMLEFT", "BOTTOMRIGHT", CUF_AURA_BOTTOM_OFFSET + powerBarUsedHeight;
 	frame.debuffFrames[1]:ClearAllPoints();
 	frame.debuffFrames[1]:SetPoint(debuffPos, frame, "BOTTOMLEFT", 3, debuffOffset);
@@ -1469,7 +1582,7 @@ function DefaultCompactUnitFrameSetup(frame)
 		frame.debuffFrames[i].maxHeight = options.height - powerBarUsedHeight - CUF_AURA_BOTTOM_OFFSET - CUF_NAME_SECTION_SIZE;
 		--frame.debuffFrames[i]:SetSize(11, 11);
 	end
-	
+
 	frame.dispelDebuffFrames[1]:SetPoint("TOPRIGHT", -3, -2);
 	for i=1, #frame.dispelDebuffFrames do
 		if ( i > 1 ) then
@@ -1477,19 +1590,19 @@ function DefaultCompactUnitFrameSetup(frame)
 		end
 		frame.dispelDebuffFrames[i]:SetSize(12, 12);
 	end
-	
+
 	frame.selectionHighlight:SetTexture("Interface\\RaidFrame\\Raid-FrameHighlights");
 	frame.selectionHighlight:SetTexCoord(unpack(texCoords["Raid-TargetFrame"]));
 	frame.selectionHighlight:SetAllPoints(frame);
-	
+
 	frame.aggroHighlight:SetTexture("Interface\\RaidFrame\\Raid-FrameHighlights");
 	frame.aggroHighlight:SetTexCoord(unpack(texCoords["Raid-AggroFrame"]));
 	frame.aggroHighlight:SetAllPoints(frame);
-	
+
 	frame.centerStatusIcon:ClearAllPoints();
 	frame.centerStatusIcon:SetPoint("CENTER", frame, "BOTTOM", 0, options.height / 3 + 2);
 	frame.centerStatusIcon:SetSize(buffSize * 2, buffSize * 2);
-	
+
 	if ( options.displayBorder ) then
 		frame.horizTopBorder:ClearAllPoints();
 		frame.horizTopBorder:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, -7);
@@ -1497,28 +1610,28 @@ function DefaultCompactUnitFrameSetup(frame)
 		frame.horizTopBorder:SetTexture("Interface\\RaidFrame\\Raid-HSeparator");
 		frame.horizTopBorder:SetHeight(8);
 		frame.horizTopBorder:Show();
-		
+
 		frame.horizBottomBorder:ClearAllPoints();
 		frame.horizBottomBorder:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 1);
 		frame.horizBottomBorder:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 1);
 		frame.horizBottomBorder:SetTexture("Interface\\RaidFrame\\Raid-HSeparator");
 		frame.horizBottomBorder:SetHeight(8);
 		frame.horizBottomBorder:Show();
-		
+
 		frame.vertLeftBorder:ClearAllPoints();
 		frame.vertLeftBorder:SetPoint("TOPRIGHT", frame, "TOPLEFT", 7, 0);
 		frame.vertLeftBorder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", 7, 0);
 		frame.vertLeftBorder:SetTexture("Interface\\RaidFrame\\Raid-VSeparator");
 		frame.vertLeftBorder:SetWidth(8);
 		frame.vertLeftBorder:Show();
-		
+
 		frame.vertRightBorder:ClearAllPoints();
 		frame.vertRightBorder:SetPoint("TOPLEFT", frame, "TOPRIGHT", -1, 0);
 		frame.vertRightBorder:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", -1, 0);
 		frame.vertRightBorder:SetTexture("Interface\\RaidFrame\\Raid-VSeparator");
 		frame.vertRightBorder:SetWidth(8);
 		frame.vertRightBorder:Show();
-		
+
 		if ( options.displayPowerBar ) then
 			frame.horizDivider:ClearAllPoints();
 			frame.horizDivider:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 1 + powerBarUsedHeight);
@@ -1534,10 +1647,10 @@ function DefaultCompactUnitFrameSetup(frame)
 		frame.horizBottomBorder:Hide();
 		frame.vertLeftBorder:Hide();
 		frame.vertRightBorder:Hide();
-		
+
 		frame.horizDivider:Hide();
 	end
-	
+
 	CompactUnitFrame_SetOptionTable(frame, DefaultCompactUnitFrameOptions)
 end
 
@@ -1566,7 +1679,7 @@ function DefaultCompactMiniFrameSetup(frame)
 	frame.healthBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1);
 	frame.healthBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1);
 	frame.healthBar:SetStatusBarTexture("Interface\\RaidFrame\\Raid-Bar-Hp-Fill", "BORDER");
-	
+
 	frame.myHealPrediction:ClearAllPoints();
 	frame.myHealPrediction:SetColorTexture(1,1,1);
 	frame.myHealPrediction:SetGradient("VERTICAL", 8/255, 93/255, 72/255, 11/255, 136/255, 105/255);
@@ -1604,11 +1717,11 @@ function DefaultCompactMiniFrameSetup(frame)
 	frame.selectionHighlight:SetTexture("Interface\\RaidFrame\\Raid-FrameHighlights");
 	frame.selectionHighlight:SetTexCoord(unpack(texCoords["Raid-TargetFrame"]));
 	frame.selectionHighlight:SetAllPoints(frame);
-	
+
 	frame.aggroHighlight:SetTexture("Interface\\RaidFrame\\Raid-FrameHighlights");
 	frame.aggroHighlight:SetTexCoord(unpack(texCoords["Raid-AggroFrame"]));
 	frame.aggroHighlight:SetAllPoints(frame);
-	
+
 	if ( options.displayBorder ) then
 		frame.horizTopBorder:ClearAllPoints();
 		frame.horizTopBorder:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, -7);
@@ -1616,21 +1729,21 @@ function DefaultCompactMiniFrameSetup(frame)
 		frame.horizTopBorder:SetTexture("Interface\\RaidFrame\\Raid-HSeparator");
 		frame.horizTopBorder:SetHeight(8);
 		frame.horizTopBorder:Show();
-		
+
 		frame.horizBottomBorder:ClearAllPoints();
 		frame.horizBottomBorder:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 1);
 		frame.horizBottomBorder:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 1);
 		frame.horizBottomBorder:SetTexture("Interface\\RaidFrame\\Raid-HSeparator");
 		frame.horizBottomBorder:SetHeight(8);
 		frame.horizBottomBorder:Show();
-		
+
 		frame.vertLeftBorder:ClearAllPoints();
 		frame.vertLeftBorder:SetPoint("TOPRIGHT", frame, "TOPLEFT", 7, 0);
 		frame.vertLeftBorder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", 7, 0);
 		frame.vertLeftBorder:SetTexture("Interface\\RaidFrame\\Raid-VSeparator");
 		frame.vertLeftBorder:SetWidth(8);
 		frame.vertLeftBorder:Show();
-		
+
 		frame.vertRightBorder:ClearAllPoints();
 		frame.vertRightBorder:SetPoint("TOPLEFT", frame, "TOPRIGHT", -1, 0);
 		frame.vertRightBorder:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", -1, 0);
@@ -1643,7 +1756,7 @@ function DefaultCompactMiniFrameSetup(frame)
 		frame.vertLeftBorder:Hide();
 		frame.vertRightBorder:Hide();
 	end
-	
+
 	CompactUnitFrame_SetOptionTable(frame, DefaultCompactMiniFrameOptions)
 end
 
@@ -1664,6 +1777,7 @@ DefaultCompactNamePlateFriendlyFrameOptions = {
 	smoothHealthUpdates = false,
 	displayNameWhenSelected = true,
 	displayNameByPlayerNameRules = true,
+	showPvPClassificationIndicator = true,
 
 	selectedBorderColor = CreateColor(1, 1, 1, .35),
 	tankBorderColor = CreateColor(1, 1, 0, .6),
@@ -1685,10 +1799,11 @@ DefaultCompactNamePlateEnemyFrameOptions = {
 	displayNameByPlayerNameRules = true,
 	greyOutWhenTapDenied = true,
 	showClassificationIndicator = true,
+	showPvPClassificationIndicator = true,
 
-	selectedBorderColor = CreateColor(1, 1, 1, .55),
+	selectedBorderColor = CreateColor(1, 1, 1, .9),
 	tankBorderColor = CreateColor(1, 1, 0, .6),
-	defaultBorderColor = CreateColor(0, 0, 0, .8),
+	defaultBorderColor = CreateColor(0, 0, 0, 1),
 }
 
 DefaultCompactNamePlatePlayerFrameOptions = {
@@ -1703,7 +1818,7 @@ DefaultCompactNamePlatePlayerFrameOptions = {
 	hideCastbar = true,
 	healthBarColorOverride = CreateColor(0, 1, 0),
 
-	defaultBorderColor = CreateColor(0, 0, 0, .8),
+	defaultBorderColor = CreateColor(0, 0, 0, 1),
 }
 
 DefaultCompactNamePlateFrameSetUpOptions = {
@@ -1739,20 +1854,26 @@ function DefaultCompactNamePlateFrameSetup(frame, options)
 		error("Cannot setup target nameplate. Missing options table.")
 	end
 
-	frame.castBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 6);
-	frame.castBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 6);
-	frame.castBar:SetStatusBarTexture("Interface/TargetingFrame/UI-TargetingFrame-BarFill");
-
 	frame.castBar.Text:SetAllPoints(frame.castBar);
 	frame.castBar.Text:SetFontObject(SystemFont_NamePlateCastBar);
 
+	frame.castBar:SetStatusBarTexture("Interface/TargetingFrame/UI-TargetingFrame-BarFill");
+
 	CastingBarFrame_AddWidgetForFade(frame.castBar, frame.castBar.Icon);
 	CastingBarFrame_AddWidgetForFade(frame.castBar, frame.castBar.BorderShield);
-	
-	frame.healthBar:SetPoint("BOTTOMLEFT", frame.castBar, "TOPLEFT", 0, 2);
-	frame.healthBar:SetPoint("BOTTOMRIGHT", frame.castBar, "TOPRIGHT", 0, 2);
-	
+
 	DefaultCompactNamePlateFrameSetupInternal(frame, DefaultCompactNamePlateFrameSetUpOptions, options);
+	DefaultCompactNamePlateFrameAnchors(frame);
+end
+
+function DefaultCompactNamePlateFrameAnchors(frame)
+	PixelUtil.SetPoint(frame.castBar, "BOTTOMLEFT", frame, "BOTTOMLEFT", 12, 6);
+	PixelUtil.SetPoint(frame.castBar, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 6);
+
+	PixelUtil.SetPoint(frame.healthBar, "BOTTOMLEFT", frame.castBar, "TOPLEFT", 0, 2);
+	PixelUtil.SetPoint(frame.healthBar, "BOTTOMRIGHT", frame.castBar, "TOPRIGHT", 0, 2);
+
+	DefaultCompactNamePlateFrameAnchorInternal(frame, DefaultCompactNamePlateFrameSetUpOptions);
 end
 
 function DefaultCompactNamePlateFriendlyFrameSetup(frame)
@@ -1760,14 +1881,19 @@ function DefaultCompactNamePlateFriendlyFrameSetup(frame)
 end
 
 function DefaultCompactNamePlateEnemyFrameSetup(frame)
-	DefaultCompactNamePlateFrameSetup(frame, DefaultCompactNamePlateEnemyFrameOptions);	
+	DefaultCompactNamePlateFrameSetup(frame, DefaultCompactNamePlateEnemyFrameOptions);
+end
+
+function DefaultCompactNamePlatePlayerFrameAnchor(frame)
+	PixelUtil.SetPoint(frame.healthBar, "LEFT", frame, "LEFT", 12, 5);
+	PixelUtil.SetPoint(frame.healthBar, "RIGHT", frame, "RIGHT", -12, 5);
+
+	DefaultCompactNamePlateFrameAnchorInternal(frame, DefaultCompactNamePlatePlayerFrameSetUpOptions);
 end
 
 function DefaultCompactNamePlatePlayerFrameSetup(frame)
-	frame.healthBar:SetPoint("LEFT", frame, "LEFT", 12, 5);
-	frame.healthBar:SetPoint("RIGHT", frame, "RIGHT", -12, 5);
-		
 	DefaultCompactNamePlateFrameSetupInternal(frame, DefaultCompactNamePlatePlayerFrameSetUpOptions, DefaultCompactNamePlatePlayerFrameOptions);
+	DefaultCompactNamePlatePlayerFrameAnchor(frame);
 end
 
 function DefaultCompactNamePlateFrameSetupInternal(frame, setupOptions, frameOptions)
@@ -1795,17 +1921,6 @@ function DefaultCompactNamePlateFrameSetupInternal(frame, setupOptions, frameOpt
 
 	frame.healthBar:SetShown(not setupOptions.hideHealthbar);
 
-	frame.castBar.BorderShield:SetSize(setupOptions.castBarShieldWidth, setupOptions.castBarShieldHeight);
-
-	frame.castBar.BorderShield:ClearAllPoints();
-	frame.castBar.BorderShield:SetPoint("CENTER", frame.castBar, "LEFT", 0, 0);
-
-	frame.castBar.Icon:SetSize(setupOptions.castIconWidth, setupOptions.castIconHeight);
-	frame.castBar.Icon:ClearAllPoints();
-	frame.castBar.Icon:SetPoint("CENTER", frame.castBar, "LEFT", 0, 0);
-
-	frame.healthBar:SetHeight(setupOptions.healthBarHeight);
-
 	frame.selectionHighlight:SetParent(frame.healthBar);
 	frame.aggroHighlight:SetParent(frame.healthBar);
 
@@ -1818,44 +1933,68 @@ function DefaultCompactNamePlateFrameSetupInternal(frame, setupOptions, frameOpt
 	frame.myHealAbsorbLeftShadow = frame.healthBar.myHealAbsorbLeftShadow;
 	frame.myHealAbsorbRightShadow = frame.healthBar.myHealAbsorbRightShadow;
 	frame.overHealAbsorbGlow = frame.healthBar.overHealAbsorbGlow;
-	
-	frame.myHealPrediction:ClearAllPoints();
+
 	frame.myHealPrediction:SetVertexColor(0.0, 0.659, 0.608);
 
-	frame.myHealAbsorb:ClearAllPoints();
 	frame.myHealAbsorb:SetTexture("Interface\\RaidFrame\\Absorb-Fill", true, true);
+
+	frame.otherHealPrediction:SetVertexColor(0.0, 0.659, 0.608);
+
+	frame.totalAbsorb:SetTexture("Interface\\RaidFrame\\Shield-Fill");
+	frame.totalAbsorb.overlay = frame.totalAbsorbOverlay;
+
+	frame.totalAbsorbOverlay:SetTexture("Interface\\RaidFrame\\Shield-Overlay", true, true);	--Tile both vertically and horizontally
+	frame.totalAbsorbOverlay.tileSize = 20;
+
+	frame.overAbsorbGlow:SetTexture("Interface\\RaidFrame\\Shield-Overshield");
+	frame.overAbsorbGlow:SetBlendMode("ADD");
+
+	frame.overHealAbsorbGlow:SetTexture("Interface\\RaidFrame\\Absorb-Overabsorb");
+	frame.overHealAbsorbGlow:SetBlendMode("ADD");
+	
+	frame.myHealPrediction:ClearAllPoints();
+
+	frame.myHealAbsorb:ClearAllPoints();
 
 	frame.myHealAbsorbLeftShadow:ClearAllPoints();
 	frame.myHealAbsorbRightShadow:ClearAllPoints();
 
 	frame.otherHealPrediction:ClearAllPoints();
-	frame.otherHealPrediction:SetVertexColor(0.0, 0.659, 0.608);
 
 	frame.totalAbsorb:ClearAllPoints();
-	frame.totalAbsorb:SetTexture("Interface\\RaidFrame\\Shield-Fill");
-	frame.totalAbsorb.overlay = frame.totalAbsorbOverlay;
 
-	frame.totalAbsorbOverlay:SetTexture("Interface\\RaidFrame\\Shield-Overlay", true, true);	--Tile both vertically and horizontally
 	frame.totalAbsorbOverlay:SetAllPoints(frame.totalAbsorb);
-	frame.totalAbsorbOverlay.tileSize = 20;
-
-	frame.overAbsorbGlow:ClearAllPoints();
-	frame.overAbsorbGlow:SetTexture("Interface\\RaidFrame\\Shield-Overshield");
-	frame.overAbsorbGlow:SetBlendMode("ADD");
-	frame.overAbsorbGlow:SetPoint("BOTTOMLEFT", frame.healthBar, "BOTTOMRIGHT", -4, -1);
-	frame.overAbsorbGlow:SetPoint("TOPLEFT", frame.healthBar, "TOPRIGHT", -4, 1);
-	frame.overAbsorbGlow:SetWidth(8);
-
-	frame.overHealAbsorbGlow:ClearAllPoints();
-	frame.overHealAbsorbGlow:SetTexture("Interface\\RaidFrame\\Absorb-Overabsorb");
-	frame.overHealAbsorbGlow:SetBlendMode("ADD");
-	frame.overHealAbsorbGlow:SetPoint("BOTTOMRIGHT", frame.healthBar, "BOTTOMLEFT", 2, -1);
-	frame.overHealAbsorbGlow:SetPoint("TOPRIGHT", frame.healthBar, "TOPLEFT", 2, 1);
-	frame.overHealAbsorbGlow:SetWidth(8);
 
 	frame.classificationIndicator = frame.ClassificationFrame.classificationIndicator;
 
 	frame.LoseAggroAnim:Stop();
 
-	CompactUnitFrame_SetOptionTable(frame, frameOptions)
+	CompactUnitFrame_SetOptionTable(frame, frameOptions);
+end
+
+function DefaultCompactNamePlateFrameAnchorInternal(frame, setupOptions)
+	PixelUtil.SetSize(frame.castBar.BorderShield, setupOptions.castBarShieldWidth, setupOptions.castBarShieldHeight);
+	frame.castBar.BorderShield:ClearAllPoints();
+	PixelUtil.SetPoint(frame.castBar.BorderShield, "CENTER", frame.castBar, "LEFT", 0, 0);
+
+	PixelUtil.SetSize(frame.castBar.Icon, setupOptions.castIconWidth, setupOptions.castIconHeight);
+	frame.castBar.Icon:ClearAllPoints();
+	PixelUtil.SetPoint(frame.castBar.Icon, "CENTER", frame.castBar, "LEFT", 0, 0);
+
+	PixelUtil.SetHeight(frame.healthBar, setupOptions.healthBarHeight);
+
+	PixelUtil.SetPoint(frame.name, "BOTTOM", frame.healthBar, "TOP", 0, 4);
+	PixelUtil.SetHeight(frame.name, frame.name:GetLineHeight());
+
+	frame.overAbsorbGlow:ClearAllPoints();
+	PixelUtil.SetPoint(frame.overAbsorbGlow, "BOTTOMLEFT", frame.healthBar, "BOTTOMRIGHT", -4, -1);
+	PixelUtil.SetPoint(frame.overAbsorbGlow, "TOPLEFT", frame.healthBar, "TOPRIGHT", -4, 1);
+	PixelUtil.SetHeight(frame.overAbsorbGlow, 8);
+
+	frame.overHealAbsorbGlow:ClearAllPoints();
+	PixelUtil.SetPoint(frame.overHealAbsorbGlow, "BOTTOMRIGHT", frame.healthBar, "BOTTOMLEFT", 2, -1);
+	PixelUtil.SetPoint(frame.overHealAbsorbGlow, "TOPRIGHT", frame.healthBar, "TOPLEFT", 2, 1);
+	PixelUtil.SetWidth(frame.overHealAbsorbGlow, 8);
+
+	frame.healthBar.border:UpdateSizes();
 end

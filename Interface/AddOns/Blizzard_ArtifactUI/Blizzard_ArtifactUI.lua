@@ -38,7 +38,7 @@ StaticPopupDialogs["NOT_ENOUGH_POWER_ARTIFACT_RESPEC"] = {
 }
 
 function ArtifactUI_CanViewArtifact()
-	return C_ArtifactUI.IsAtForge() or ArtifactUI_HasPurchasedAnything() or C_ArtifactUI.GetNumObtainedArtifacts() > 1;
+	return C_ArtifactUI.IsAtForge() or ArtifactUI_HasPurchasedAnything() or C_ArtifactUI.IsArtifactDisabled() or C_ArtifactUI.GetNumObtainedArtifacts() > 1;
 end
 
 function ArtifactUI_HasPurchasedAnything()
@@ -64,7 +64,6 @@ function ArtifactUIMixin:OnLoad()
 
 	self:RegisterEvent("ARTIFACT_UPDATE");
 	self:RegisterEvent("ARTIFACT_CLOSE");
-	self:RegisterEvent("ARTIFACT_MAX_RANKS_UPDATE");
 end
 
 function ArtifactUIMixin:OnShow()
@@ -78,7 +77,7 @@ function ArtifactUIMixin:OnShow()
 	self:EvaulateForgeState();
 	self:SetupPerArtifactData();
 	self:RefreshKnowledgeRanks();
-	self.PerksTab:Refresh(true);
+	self.PerksTab:OnUIOpened();
 	
 	self:RegisterEvent("ARTIFACT_XP_UPDATE");
 	self:RegisterEvent("ARTIFACT_RELIC_INFO_RECEIVED");
@@ -124,18 +123,6 @@ function ArtifactUIMixin:OnEvent(event, ...)
 		self.PerksTab:Refresh(false);
 	elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
 		self.PerksTab:Refresh(true);
-	end
-end
-
-function ArtifactUIMixin:OnTierChanged(newTier, bagOrInventorySlot, slot)
-	if newTier == 2 then
-		self.queueTier2UpgradeAnim = true;
-		HideUIPanel(self);
-		if slot then
-			SocketContainerItem(bagOrInventorySlot, slot);
-		else
-			SocketInventoryItem(bagOrInventorySlot);
-		end
 	end
 end
 
@@ -235,24 +222,19 @@ end
 
 function ArtifactUIMixin:RefreshKnowledgeRanks()
 	local totalRanks = C_ArtifactUI.GetTotalPurchasedRanks();
-	if totalRanks > 0 then
+	if totalRanks > 0 and not C_ArtifactUI.IsArtifactDisabled() then
 		self.ForgeBadgeFrame.ForgeLevelLabel:SetText(totalRanks);
 		self.ForgeBadgeFrame.ForgeLevelLabel:Show();
 		self.ForgeBadgeFrame.ForgeLevelBackground:Show();
 		self.ForgeBadgeFrame.ForgeLevelBackgroundBlack:Show();
 		self.ForgeLevelFrame:Show();
-
-		local knowledgeLevel = C_ArtifactUI.GetArtifactKnowledgeLevel();
-		if knowledgeLevel and knowledgeLevel > 0 and not GetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_ARTIFACT_KNOWLEDGE) then
-			self.KnowledgeLevelHelpBox:Show();
-		end
 	else
 		self.ForgeBadgeFrame.ForgeLevelLabel:Hide();
 		self.ForgeBadgeFrame.ForgeLevelBackground:Hide();
 		self.ForgeBadgeFrame.ForgeLevelBackgroundBlack:Hide();
 		self.ForgeLevelFrame:Hide();
-		self.KnowledgeLevelHelpBox:Hide();
 	end
+	self.KnowledgeLevelHelpBox:Hide();
 end
 
 function ArtifactUIMixin:OnKnowledgeEnter(knowledgeFrame)
@@ -264,22 +246,14 @@ function ArtifactUIMixin:OnKnowledgeEnter(knowledgeFrame)
 	GameTooltip:AddLine(ARTIFACTS_NUM_PURCHASED_RANKS:format(C_ArtifactUI.GetTotalPurchasedRanks()), HIGHLIGHT_FONT_COLOR:GetRGB());
 
 	local addedAnyMetaPowers = MetaPowerTooltipHelper(C_ArtifactUI.GetMetaPowerInfo());
-
-	local knowledgeLevel = C_ArtifactUI.GetArtifactKnowledgeLevel();
-	if knowledgeLevel and knowledgeLevel > 0 then
-		local knowledgeMultiplier = C_ArtifactUI.GetArtifactKnowledgeMultiplier();
-		local percentIncrease = math.floor(((knowledgeMultiplier - 1.0) * 100) + .5);
-		if percentIncrease > 0.0 then
-			if addedAnyMetaPowers then
-				GameTooltip:AddLine(" ");
-			end
-
-			GameTooltip:AddLine(ARTIFACTS_KNOWLEDGE_TOOLTIP_LEVEL:format(knowledgeLevel), HIGHLIGHT_FONT_COLOR:GetRGB());
-			GameTooltip:AddLine(ARTIFACTS_KNOWLEDGE_TOOLTIP_DESC:format(BreakUpLargeNumbers(percentIncrease)), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true);
-		end
-	end
 	
+	knowledgeFrame.UpdateTooltip = function() self:OnKnowledgeEnter(knowledgeFrame); end;
 	GameTooltip:Show();
+end
+
+function ArtifactUIMixin:OnKnowledgeLeave(knowledgeFrame)
+	knowledgeFrame.UpdateTooltip = nil;
+	GameTooltip:Hide();
 end
 
 function ArtifactUIMixin:OnInventoryItemMouseEnter(bag, slot)

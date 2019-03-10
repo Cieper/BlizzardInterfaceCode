@@ -720,7 +720,19 @@ function LFGDungeonReadyPopup_Update()
 	LFGDungeonReadyDialog.leaveButton:SetText(leaveText);
 
 	if ( hasResponded ) then
-		if ( subtypeID == LFG_SUBTYPEID_RAID ) then
+		if ( subtypeID == LFG_SUBTYPEID_SCENARIO or subtypeID == LFG_SUBTYPEID_FLEXRAID or subtypeID == LFG_SUBTYPEID_WORLDPVP) then
+			LFGDungeonReadyDialog:Hide();
+			-- there may be solo scenarios
+			if ( numMembers > 1 ) then
+				LFGDungeonReadyStatus:Show();
+				LFGDungeonReadyStatusIndividual:Hide();
+				LFGDungeonReadyStatusGrouped:Hide();
+				LFGDungeonReadyStatusRoleless:Show();
+				LFGDungeonReadyStatusRoleless_UpdateCount(LFGDungeonReadyStatusRoleless.ready, numMembers);
+			else
+				LFGDungeonReadyStatus:Hide();
+			end
+		elseif ( numMembers > 5 or subtypeID == LFG_SUBTYPEID_RAID ) then
 			LFGDungeonReadyStatus:Show();
 			LFGDungeonReadyStatusIndividual:Hide();
 			LFGDungeonReadyStatusRoleless:Hide();
@@ -733,18 +745,6 @@ function LFGDungeonReadyPopup_Update()
 			
 			if ( not LFGDungeonReadyPopup:IsShown() or StaticPopup_IsLastDisplayedFrame(LFGDungeonReadyPopup) ) then
 				LFGDungeonReadyPopup:SetHeight(LFGDungeonReadyStatus:GetHeight());
-			end
-		elseif ( subtypeID == LFG_SUBTYPEID_SCENARIO or subtypeID == LFG_SUBTYPEID_FLEXRAID or subtypeID == LFG_SUBTYPEID_WORLDPVP) then
-			LFGDungeonReadyDialog:Hide();
-			-- there may be solo scenarios
-			if ( numMembers > 1 ) then
-				LFGDungeonReadyStatus:Show();
-				LFGDungeonReadyStatusIndividual:Hide();
-				LFGDungeonReadyStatusGrouped:Hide();
-				LFGDungeonReadyStatusRoleless:Show();
-				LFGDungeonReadyStatusRoleless_UpdateCount(LFGDungeonReadyStatusRoleless.ready, numMembers);
-			else
-				LFGDungeonReadyStatus:Hide();
 			end
 		else
 			LFGDungeonReadyStatus:Show();
@@ -794,10 +794,6 @@ function LFGDungeonReadyPopup_Update()
 			LFGDungeonReadyPopup:SetHeight(223);
 			LFGDungeonReadyDialog.background:SetTexCoord(0, 1, 0, 1);
 			if ( subtypeID == LFG_SUBTYPEID_SCENARIO ) then
-				-- change name for random
-				if ( typeID == TYPEID_RANDOM_DUNGEON ) then
-					name = RANDOM_SCENARIO;
-				end
 				LFGDungeonReadyDialog.background:SetDrawLayer("BORDER");
 				LFGDungeonReadyDialog.background:SetWidth(290);
 				LFGDungeonReadyDialog.instanceInfo.underline:Hide();
@@ -1339,9 +1335,12 @@ function LFGRewardsFrame_UpdateFrame(parentFrame, dungeonID, background)
 
 	local itemButtonIndex = 1;
 	for i=1, numRewards do
-		local name, texture, numItems, isBonusReward, rewardType, rewardID = GetLFGDungeonRewardInfo(dungeonID, i);
+		local name, texture, numItems, isBonusReward, rewardType, rewardID, quality = GetLFGDungeonRewardInfo(dungeonID, i);
+		if(rewardType == "currency") then	
+			name, texture, numItems, quality = CurrencyContainerUtil.GetCurrencyContainerInfo(rewardID, numItems, name, texture, quality); 
+		end
 		if ( not isBonusReward ) then
-			lastFrame = LFGRewardsFrame_SetItemButton(parentFrame, dungeonID, itemButtonIndex, i, name, texture, numItems, rewardType, rewardID);
+			lastFrame = LFGRewardsFrame_SetItemButton(parentFrame, dungeonID, itemButtonIndex, i, name, texture, numItems, rewardType, rewardID, quality);
 			itemButtonIndex = itemButtonIndex + 1;
 		end
 	end
@@ -1351,8 +1350,11 @@ function LFGRewardsFrame_UpdateFrame(parentFrame, dungeonID, background)
 			local eligible, forTank, forHealer, forDamage, itemCount = GetLFGRoleShortageRewards(dungeonID, shortageIndex);
 			if ( eligible and ((tankChecked and forTank) or (healerChecked and forHealer) or (damageChecked and forDamage)) ) then
 				for rewardIndex=1, itemCount do
-					local name, texture, numItems, _, rewardType, rewardID = GetLFGDungeonShortageRewardInfo(dungeonID, shortageIndex, rewardIndex);
-					lastFrame = LFGRewardsFrame_SetItemButton(parentFrame, dungeonID, itemButtonIndex, rewardIndex, name, texture, numItems, rewardType, rewardID, shortageIndex, forTank, forHealer, forDamage);
+					local name, texture, numItems, _, rewardType, rewardID, quality = GetLFGDungeonShortageRewardInfo(dungeonID, shortageIndex, rewardIndex);
+					if(rewardType == "currency") then	
+						name, texture, numItems, quality = CurrencyContainerUtil.GetCurrencyContainerInfo(rewardID, numItems, name, texture, quality); 
+					end
+					lastFrame = LFGRewardsFrame_SetItemButton(parentFrame, dungeonID, itemButtonIndex, rewardIndex, name, texture, numItems, rewardType, rewardID, quality, shortageIndex, forTank, forHealer, forDamage);
 					itemButtonIndex = itemButtonIndex + 1;
 				end
 			end
@@ -1450,7 +1452,7 @@ function LFGRewardsFrame_UpdateFrame(parentFrame, dungeonID, background)
 	parentFrame.spacer:SetPoint("TOPLEFT", lastFrame, "BOTTOMLEFT", 0, -10);
 end
 
-function LFGRewardsFrame_SetItemButton(parentFrame, dungeonID, index, id, name, texture, numItems, rewardType, rewardID, shortageIndex, showTankIcon, showHealerIcon, showDamageIcon)
+function LFGRewardsFrame_SetItemButton(parentFrame, dungeonID, index, id, name, texture, numItems, rewardType, rewardID, quality, shortageIndex, showTankIcon, showHealerIcon, showDamageIcon)
 	local parentName = parentFrame:GetName();
 	local frame = _G[parentName.."Item"..index];
 	if ( not frame ) then
@@ -1517,7 +1519,10 @@ function LFGRewardsFrame_SetItemButton(parentFrame, dungeonID, index, id, name, 
 	end
 	
 	if ( rewardType == "item" ) then
-		SetItemButtonQuality(frame, select(3, GetItemInfo(rewardID)), rewardID);
+		SetItemButtonQuality(frame, quality, rewardID);
+		frame.IconBorder:Show();
+	elseif( rewardType == "currency" ) then 
+		SetItemButtonQuality(frame, quality, rewardID); 
 		frame.IconBorder:Show();
 	else
 		frame.IconBorder:Hide();
@@ -1719,8 +1724,16 @@ function LFGDungeonList_EvaluateListState(category)
 	return enabled, queued;
 end
 
+local function GetLFGDifficultyColor(level, isScalingDungeon)
+	if (not isScalingDungeon) then
+		return GetQuestDifficultyColor(level);
+	end
+
+	return QuestDifficultyColors["difficult"], QuestDifficultyHighlightColors["difficult"];
+end
+
 function LFGDungeonListButton_SetDungeon(button, dungeonID, enabled, checkedList)
-	local name, typeID, subtypeID, minLevel, maxLevel, recLevel, minRecLevel, maxRecLevel, expansionLevel, groupID, textureFilename, difficulty, maxPlayers, description, isHoliday = GetLFGDungeonInfo(dungeonID);
+	local name, typeID, subtypeID, minLevel, maxLevel, recLevel, minRecLevel, maxRecLevel, expansionLevel, groupID, textureFilename, difficulty, maxPlayers, description, isHoliday, bonusRepAmount, minPlayers, isRandomTimewalker, mapName, minGear, isScalingDungeon = GetLFGDungeonInfo(dungeonID);
 	button.id = dungeonID;
 	if ( LFGIsIDHeader(dungeonID) ) then
 		button.instanceName:SetText(name);
@@ -1757,7 +1770,7 @@ function LFGDungeonListButton_SetDungeon(button, dungeonID, enabled, checkedList
 			button.level:SetText(format(LFD_LEVEL_FORMAT_RANGE, minLevel, maxLevel));
 		end
 		button.level:Show();
-		local difficultyColor = GetQuestDifficultyColor(recLevel);
+		local difficultyColor = GetLFGDifficultyColor(recLevel, isScalingDungeon);
 		button.level:SetFontObject(difficultyColor.font);
 		
 		if ( enabled ) then

@@ -9,11 +9,22 @@ CONTAINER_WIDTH = 192;
 CONTAINER_SPACING = 0;
 VISIBLE_CONTAINER_SPACING = 3;
 CONTAINER_OFFSET_Y = 70;
-CONTAINER_OFFSET_X = 0;
+CONTAINER_OFFSET_X = -4;
+MINIMUM_CONTAINER_OFFSET_X = 10;
 CONTAINER_SCALE = 0.75;
-BACKPACK_HEIGHT = 255;
-
+BACKPACK_MONEY_OFFSET_DEFAULT = -231;
+BACKPACK_MONEY_HEIGHT_OFFSET_PER_EXTRA_ROW = 41;
+BACKPACK_BASE_HEIGHT = 255;
+BACKPACK_HEIGHT_OFFSET_PER_EXTRA_ROW = 43;
+BACKPACK_DEFAULT_TOPHEIGHT = 255;
+BACKPACK_EXTENDED_TOPHEIGHT = 226;
+BACKPACK_BASE_SIZE = 16;
+FIRST_BACKPACK_BUTTON_OFFSET_BASE = -225;
+FIRST_BACKPACK_BUTTON_OFFSET_PER_EXTRA_ROW = 41;
 FRAME_THAT_OPENED_BAGS = nil;
+CONTAINER_BOTTOM_TEXTURE_DEFAULT_HEIGHT = 10;
+CONTAINER_BOTTOM_TEXTURE_DEFAULT_TOP_COORD = 0.330078125;
+CONTAINER_BOTTOM_TEXTURE_DEFAULT_BOTTOM_COORD = 0.349609375;
 
 function ContainerFrame_OnLoad(self)
 	self:RegisterEvent("BAG_OPEN");
@@ -22,6 +33,7 @@ function ContainerFrame_OnLoad(self)
 	self:RegisterEvent("UNIT_QUEST_LOG_CHANGED");
 	ContainerFrame1.bagsShown = 0;
 	ContainerFrame1.bags = {};
+	ContainerFrame1.forceExtended = false;
 end
 
 function ContainerFrame_OnEvent(self, event, ...)
@@ -74,12 +86,25 @@ function ContainerFrame_OnEvent(self, event, ...)
 	end
 end
 
+function ContainerFrame_GetContainerNumSlots(id)
+	local num = GetContainerNumSlots(id);
+	if (id == 0 and ContainerFrame1.forceExtended) then
+		num = num + 4;
+	end
+	return num;
+end
+
+function ContainerFrame_SetBackpackForceExtended(forceExtended)
+	ContainerFrame1.forceExtended = forceExtended;
+	OpenBag(0, true);
+end
+
 function ToggleBag(id)
 	if ( IsOptionFrameOpen() ) then
 		return;
 	end
 	
-	local size = GetContainerNumSlots(id);
+	local size = ContainerFrame_GetContainerNumSlots(id);
 	if ( size > 0 or id == KEYRING_CONTAINER ) then
 		local containerShowing;
 		for i=1, NUM_CONTAINER_FRAMES, 1 do
@@ -121,6 +146,20 @@ function ToggleBackpack()
 	end
 end
 
+function ContainerFrame_GetBagButton(self)
+	if ( self:GetID() == 0 ) then
+		return MainMenuBarBackpackButton;
+	else
+		local bagButton = _G["CharacterBag"..(self:GetID() - 1).."Slot"];
+		if ( bagButton ) then
+			return bagButton;
+		else
+			local bankID = self:GetID() - NUM_BAG_SLOTS;
+			return BankSlotsFrame["Bag"..bankID];
+		end
+	end
+end
+
 function ContainerFrame_OnHide(self)
 	self:UnregisterEvent("BAG_UPDATE");
 	self:UnregisterEvent("UNIT_INVENTORY_CHANGED");
@@ -134,17 +173,9 @@ function ContainerFrame_OnHide(self)
 
 	UpdateNewItemList(self);
 
-	if ( self:GetID() == 0 ) then
-		MainMenuBarBackpackButton:SetChecked(false);
-	else
-		local bagButton = _G["CharacterBag"..(self:GetID() - 1).."Slot"];
-		if ( bagButton ) then
-			bagButton:SetChecked(false);
-		else
-			-- If its a bank bag then update its highlight
-			
-			UpdateBagButtonHighlight(self:GetID() - NUM_BAG_SLOTS); 
-		end
+	local bagButton = ContainerFrame_GetBagButton(self);
+	if ( bagButton ) then
+		bagButton.SlotHighlightTexture:Hide();
 	end
 	ContainerFrame1.bagsShown = ContainerFrame1.bagsShown - 1;
 	-- Remove the closed bag from the list and collapse the rest of the entries
@@ -179,9 +210,7 @@ function ContainerFrame_OnHide(self)
 		PlaySound(SOUNDKIT.IG_BACKPACK_CLOSE);
 	end
 
-	if ArtifactRelicHelpBox:IsShown() and ArtifactRelicHelpBox.owner == self then
-		ArtifactRelicHelpBox:Hide();
-	end
+	ContainerFrame_CloseSpecializedTutorialForItem(self);
 end
 
 function ContainerFrame_OnShow(self)
@@ -195,10 +224,15 @@ function ContainerFrame_OnShow(self)
 	self:RegisterEvent("BAG_NEW_ITEMS_UPDATED");
 	self:RegisterEvent("BAG_SLOT_FLAGS_UPDATED");
 
+	local bagButton = ContainerFrame_GetBagButton(self);
+	if ( bagButton ) then
+		bagButton.SlotHighlightTexture:Show();
+	end
+	
 	self.FilterIcon:Hide();
 	if ( self:GetID() == 0 ) then
 		local shouldShow = true;
-		if (IsCharacterNewlyBoosted() or FRAME_THAT_OPENED_BAGS ~= nil) then
+		if (IsCharacterNewlyBoosted() or FRAME_THAT_OPENED_BAGS ~= nil or IsKioskModeEnabled()) then
 			shouldShow = false;
 		else
 			for i = BACKPACK_CONTAINER + 1, NUM_BAG_SLOTS, 1 do
@@ -217,12 +251,7 @@ function ContainerFrame_OnShow(self)
 			BagHelpBox.bitField = LE_FRAME_TUTORIAL_CLEAN_UP_BAGS;
 			BagHelpBox:Show();
 		end
-		MainMenuBarBackpackButton:SetChecked(true);
 	elseif ( self:GetID() > 0) then -- The actual bank has ID -1, backpack has ID 0, we want to make sure we're looking at a regular or bank bag
-		local button = _G["CharacterBag"..(self:GetID() - 1).."Slot"];
-		if ( button ) then
-			button:SetChecked(true);
-		end
 		if (not IsInventoryItemProfessionBag("player", ContainerIDToInventoryID(self:GetID()))) then
 			for i = LE_BAG_FILTER_FLAG_EQUIPMENT, NUM_LE_BAG_FILTER_FLAGS do
 				local active = false;
@@ -241,9 +270,6 @@ function ContainerFrame_OnShow(self)
 		if ( not ContainerFrame1.allBags ) then
 			CheckBagSettingsTutorial();
 		end
-		if ( self:GetID() > NUM_BAG_SLOTS ) then
-			UpdateBagButtonHighlight(self:GetID() - NUM_BAG_SLOTS);
-		end
 	end
 	ContainerFrame1.bags[ContainerFrame1.bagsShown + 1] = self:GetName();
 	ContainerFrame1.bagsShown = ContainerFrame1.bagsShown + 1;
@@ -254,14 +280,17 @@ function ContainerFrame_OnShow(self)
 		PlaySound(SOUNDKIT.IG_BACKPACK_OPEN);
 	end
  	ContainerFrame_Update(self);
+	UpdateContainerFrameAnchors();
 	
 	-- If there are tokens watched then decide if we should show the bar
 	if ( ManageBackpackTokenFrame ) then
 		ManageBackpackTokenFrame();
 	end
+
+	AzeriteInBagsHelpBox:Hide();
 end
 
-function OpenBag(id)
+function OpenBag(id, force)
 	if ( not CanOpenPanels() ) then
 		if ( UnitIsDead("player") ) then
 			NotWhileDeadError();
@@ -269,17 +298,22 @@ function OpenBag(id)
 		return;
 	end
 
-	local size = GetContainerNumSlots(id);
+	local size = ContainerFrame_GetContainerNumSlots(id);
 	if ( size > 0 ) then
 		local containerShowing;
+		local containerFrame;
 		for i=1, NUM_CONTAINER_FRAMES, 1 do
 			local frame = _G["ContainerFrame"..i];
 			if ( frame:IsShown() and frame:GetID() == id ) then
 				containerShowing = i;
+				containerFrame = frame;
 			end
 		end
 		if ( not containerShowing ) then
 			ContainerFrame_GenerateFrame(ContainerFrame_GetOpenFrame(), size, id);
+		elseif (containerShowing and force) then
+			ContainerFrame_GenerateFrame(containerFrame, size, id);
+			ContainerFrame_Update(containerFrame);
 		end
 		if (not ContainerFrame1.allBags) then
 			CheckBagSettingsTutorial();
@@ -355,7 +389,7 @@ end
 
 function CheckBagSettingsTutorial()
 	local shouldShow = true;
-	if (IsCharacterNewlyBoosted() or FRAME_THAT_OPENED_BAGS ~= nil) then
+	if (IsCharacterNewlyBoosted() or FRAME_THAT_OPENED_BAGS ~= nil or IsKioskModeEnabled()) then
 		shouldShow = false;
 	else
 		for i = BACKPACK_CONTAINER + 1, NUM_BAG_SLOTS, 1 do
@@ -426,18 +460,55 @@ function ContainerFrame_GetOpenFrame()
 	end
 end
 
+function ContainerFrame_AnchorTutorialToItemButton(tutorialFrame, itemButton)
+	tutorialFrame.owner = itemButton:GetParent();
+	tutorialFrame:ClearAllPoints();
+	tutorialFrame:SetPoint("RIGHT", itemButton, "LEFT", -27, 0);
+	tutorialFrame:Show();
+end
+
+function ContainerFrame_IsSpecializedTutorialShown()
+	return ArtifactRelicHelpBox:IsShown() or AzeriteItemInBagHelpBox:IsShown();
+end
+
+function ContainerFrame_CloseSpecializedTutorialForItem(ownerFrame)
+	if ArtifactRelicHelpBox:IsShown() and ArtifactRelicHelpBox.owner == ownerFrame then
+		ArtifactRelicHelpBox:Hide();
+	end
+
+	if AzeriteItemInBagHelpBox:IsShown() and AzeriteItemInBagHelpBox.owner == ownerFrame then
+		AzeriteItemInBagHelpBox:Hide();
+	end
+end
+
+function ContainerFrame_ConsiderItemButtonForAzeriteTutorial(itemButton, itemID)
+	if ContainerFrame_IsSpecializedTutorialShown() then
+		return;
+	end
+
+	if itemID and C_AzeriteEmpoweredItem.IsAzeriteEmpoweredItemByID(itemID) then
+		if AzeriteUtil.AreAnyAzeriteEmpoweredItemsEquipped() then
+			SetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_AZERITE_ITEM_IN_SLOT, true);
+			return;
+		end
+
+		ContainerFrame_AnchorTutorialToItemButton(AzeriteItemInBagHelpBox, itemButton);
+	end
+end
+
 function ContainerFrame_ConsiderItemButtonForRelicTutorial(itemButton, itemID)
-	if itemID and not ArtifactRelicHelpBox:IsShown() and IsArtifactRelicItem(itemID) then
-		if C_ArtifactUI.DoesEquippedArtifactHaveAnyRelicsSlotted() then
+	if ContainerFrame_IsSpecializedTutorialShown() then
+		return;
+	end
+
+	if itemID and IsArtifactRelicItem(itemID) then
+		if C_ArtifactUI.DoesEquippedArtifactHaveAnyRelicsSlotted() and false then
 			SetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_ARTIFACT_RELIC_MATCH, true);
 			return;
 		end
 
 		if C_ArtifactUI.CanApplyArtifactRelic(itemID, true) then
-			ArtifactRelicHelpBox.owner = itemButton:GetParent();
-			ArtifactRelicHelpBox:ClearAllPoints();
-			ArtifactRelicHelpBox:SetPoint("RIGHT", itemButton, "LEFT", -27, 0);
-			ArtifactRelicHelpBox:Show();
+			ContainerFrame_AnchorTutorialToItemButton(ArtifactRelicHelpBox, itemButton);
 		end
 	end
 end
@@ -452,16 +523,16 @@ function ContainerFrame_UpdateItemUpgradeIcons(frame)
 	end
 end
 
-function ContainerFrame_Update(frame)
-	local id = frame:GetID();
-	local name = frame:GetName();
+function ContainerFrame_Update(self)
+	local id = self:GetID();
+	local name = self:GetName();
 	local itemButton;
 	local texture, itemCount, locked, quality, readable, _, isFiltered, noValue, itemID;
 	local isQuestItem, questId, isActive, questTexture;
 	local battlepayItemTexture, newItemTexture, flash, newItemAnim;
 	local tooltipOwner = GameTooltip:GetOwner();
-	
-	frame.FilterIcon:Hide();
+	local baseSize = GetContainerNumSlots(id);	
+	self.FilterIcon:Hide();
 	if ( id ~= 0 and not IsInventoryItemProfessionBag("player", ContainerIDToInventoryID(id)) ) then
 		for i = LE_BAG_FILTER_FLAG_EQUIPMENT, NUM_LE_BAG_FILTER_FLAGS do
 			local active = false;
@@ -471,8 +542,8 @@ function ContainerFrame_Update(frame)
 				active = GetBagSlotFlag(id, i);
 			end
 			if ( active ) then
-				frame.FilterIcon.Icon:SetAtlas(BAG_FILTER_ICONS[i], true);
-				frame.FilterIcon:Show();
+				self.FilterIcon.Icon:SetAtlas(BAG_FILTER_ICONS[i], true);
+				self.FilterIcon:Show();
 				break;
 			end
 		end
@@ -480,14 +551,14 @@ function ContainerFrame_Update(frame)
 
 	--Update Searchbox and sort button
 	if ( id == 0 ) then
-		BagItemSearchBox:SetParent(frame);
-		BagItemSearchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 54, -37);
-		BagItemSearchBox.anchorBag = frame;
+		BagItemSearchBox:SetParent(self);
+		BagItemSearchBox:SetPoint("TOPLEFT", self, "TOPLEFT", 54, -37);
+		BagItemSearchBox.anchorBag = self;
 		BagItemSearchBox:Show();
-		BagItemAutoSortButton:SetParent(frame);
-		BagItemAutoSortButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -9, -34);
+		BagItemAutoSortButton:SetParent(self);
+		BagItemAutoSortButton:SetPoint("TOPRIGHT", self, "TOPRIGHT", -9, -34);
 		BagItemAutoSortButton:Show();
-	elseif ( BagItemSearchBox.anchorBag == frame ) then
+	elseif ( BagItemSearchBox.anchorBag == self ) then
 		BagItemSearchBox:ClearAllPoints();
 		BagItemSearchBox:Hide();
 		BagItemSearchBox.anchorBag = nil;
@@ -495,13 +566,13 @@ function ContainerFrame_Update(frame)
 		BagItemAutoSortButton:Hide();
 	end
 
-	if ArtifactRelicHelpBox:IsShown() and ArtifactRelicHelpBox.owner == frame then
-		ArtifactRelicHelpBox:Hide();
-	end
+	ContainerFrame_CloseSpecializedTutorialForItem(self);
 
-	local shouldDoRelicChecks = not BagHelpBox:IsShown() and not GetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_ARTIFACT_RELIC_MATCH);
+	local shouldDoSpecializedTutorialChecks = not BagHelpBox:IsShown() and not IsKioskModeEnabled();
+	local shouldDoRelicChecks = shouldDoSpecializedTutorialChecks and not GetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_ARTIFACT_RELIC_MATCH);
+	local shouldDoAzeriteChecks = shouldDoSpecializedTutorialChecks and not GetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_AZERITE_ITEM_IN_SLOT);
 
-	for i=1, frame.size, 1 do
+	for i=1, self.size, 1 do
 		itemButton = _G[name.."Item"..i];
 		
 		texture, itemCount, locked, quality, readable, _, _, isFiltered, noValue, itemID = GetContainerItemInfo(id, itemButton:GetID());
@@ -512,6 +583,8 @@ function ContainerFrame_Update(frame)
 		SetItemButtonCount(itemButton, itemCount);
 		SetItemButtonDesaturated(itemButton, locked);
 		
+		ContainerFrameItemButton_SetForceExtended(itemButton, itemButton:GetID() > baseSize);
+
 		questTexture = _G[name.."Item"..i.."IconQuestTexture"];
 		if ( questId and not isActive ) then
 			questTexture:SetTexture(TEXTURE_ITEM_QUEST_BANG);
@@ -557,7 +630,16 @@ function ContainerFrame_Update(frame)
 			end
 		end
 
-		itemButton.JunkIcon:SetShown(quality == LE_ITEM_QUALITY_POOR and not noValue and MerchantFrame:IsShown());
+		itemButton.JunkIcon:Hide();
+		
+		local itemLocation = ItemLocation:CreateFromBagAndSlot(self:GetID(), itemButton:GetID());
+		if C_Item.DoesItemExist(itemLocation) then
+			local isJunk = quality == LE_ITEM_QUALITY_POOR and not noValue and MerchantFrame:IsShown();
+			itemButton.JunkIcon:SetShown(isJunk);
+		end
+		
+		itemButton:UpdateItemContextMatching();
+		
 		ContainerFrameItemButton_UpdateItemUpgradeIcon(itemButton);
 
 		if ( texture ) then
@@ -570,31 +652,38 @@ function ContainerFrame_Update(frame)
 		itemButton.readable = readable;
 		
 		if ( itemButton == tooltipOwner ) then
-			if (GetContainerItemInfo(frame:GetID(), itemButton:GetID())) then
+			if (GetContainerItemInfo(self:GetID(), itemButton:GetID())) then
 				itemButton.UpdateTooltip(itemButton);
 			else
 				GameTooltip:Hide();
 			end
 		end
 		
-		
-		if ( isFiltered ) then
-			itemButton.searchOverlay:Show();
-		else
-			itemButton.searchOverlay:Hide();
+		itemButton:SetMatchesSearch(not isFiltered);
+		if ( not isFiltered ) then
+			if shouldDoAzeriteChecks then
+				ContainerFrame_ConsiderItemButtonForAzeriteTutorial(itemButton, itemID);
+			end
 			if shouldDoRelicChecks then
 				ContainerFrame_ConsiderItemButtonForRelicTutorial(itemButton, itemID);
 			end
 		end
 	end
+
+	local bagButton = ContainerFrame_GetBagButton(self);
+	bagButton:UpdateItemContextMatching();
 end
 
 function ContainerFrame_UpdateAll()
 	for i = 1, NUM_CONTAINER_FRAMES, 1 do
 		local frame = _G["ContainerFrame"..i];
-		if (frame:IsShown()) then
+		if ( frame:IsShown() ) then
 			ContainerFrame_Update(frame);
 		end
+	end
+	
+	if BankFrame:IsShown() then
+		BankFrame_UpdateItems(BankFrame);
 	end
 end
 
@@ -606,12 +695,8 @@ function ContainerFrame_UpdateSearchResults(frame)
 	
 	for i=1, frame.size, 1 do
 		itemButton = _G[name..i] or frame["Item"..i];
-		_, _, _, _, _, _, _, isFiltered = GetContainerItemInfo(id, itemButton:GetID());	
-		if ( isFiltered ) then
-			itemButton.searchOverlay:Show();
-		else
-			itemButton.searchOverlay:Hide();
-		end
+		_, _, _, _, _, _, _, isFiltered = GetContainerItemInfo(id, itemButton:GetID());
+		itemButton:SetMatchesSearch(not isFiltered);
 	end
 end
 
@@ -668,23 +753,102 @@ function ContainerFrame_GenerateFrame(frame, size, id)
 	local bgTexture1Slot = _G[name.."Background1Slot"];
 	local columns = NUM_CONTAINER_COLUMNS;
 	local rows = ceil(size / columns);
+	local backpackFirstButtonOffset = FIRST_BACKPACK_BUTTON_OFFSET_BASE;
+	local secured = IsAccountSecured();
+
 	-- if id = 0 then its the backpack
 	if ( id == 0 ) then
 		bgTexture1Slot:Hide();
-		_G[name.."MoneyFrame"]:Show();
-		-- Set Backpack texture
+
+		local extended = size > BACKPACK_BASE_SIZE;
+		local extraRows = 0;
+
 		bgTextureTop:SetTexture("Interface\\ContainerFrame\\UI-BackpackBackground");
-		bgTextureTop:SetHeight(256);
-		bgTextureTop:SetTexCoord(0, 1, 0, 1);
+		if (extended) then
+			extraRows = math.ceil((size - BACKPACK_BASE_SIZE) / columns);
+			bgTextureTop:SetHeight(BACKPACK_EXTENDED_TOPHEIGHT);
+			bgTextureTop:SetTexCoord(0, 1, 0, BACKPACK_EXTENDED_TOPHEIGHT / BACKPACK_DEFAULT_TOPHEIGHT);
+			backpackFirstButtonOffset = backpackFirstButtonOffset - (FIRST_BACKPACK_BUTTON_OFFSET_PER_EXTRA_ROW * extraRows);	
+		else
+			bgTextureTop:SetHeight(BACKPACK_DEFAULT_TOPHEIGHT);
+			bgTextureTop:SetTexCoord(0, 1, 0, 1);
+		end
 		bgTextureTop:Show();
+		bgTextureBottom:Hide();
+
+		_G[name.."MoneyFrame"]:Show();
+		_G[name.."MoneyFrame"]:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, BACKPACK_MONEY_OFFSET_DEFAULT - (BACKPACK_MONEY_HEIGHT_OFFSET_PER_EXTRA_ROW * extraRows));
+		_G[name.."AddSlotsButton"]:SetShown(not secured and not extended);
 
 		-- Hide unused textures
 		for i=1, MAX_BG_TEXTURES do
+			_G[name.."BackgroundMiddle"..i]:SetTexture("Interface\\ContainerFrame\\UI-Bag-Components");
 			_G[name.."BackgroundMiddle"..i]:Hide();
 		end
-		bgTextureBottom:Hide();
+
+		local middleBgHeight = 0;
+
+		if (frame.extendedOverlay) then
+			frame.extendedOverlay:Hide();
+		end
+
+		if (extended) then
+			local rowHeight = 41;
+			-- Subtract four, since the top part of the backpack texture contains four rows already
+			local remainingRows = extraRows;
+
+			-- Calculate the number of background textures we're going to need
+			bgTextureCount = ceil(remainingRows/ROWS_IN_BG_TEXTURE);
+			
+			-- Try to cycle all the middle bg textures
+			local firstRowPixelOffset = 9;
+			local firstRowTexCoordOffset = 0.353515625;
+			for i=1, bgTextureCount do
+				bgTextureMiddle = _G[name.."BackgroundMiddle"..i];
+				if ( remainingRows > ROWS_IN_BG_TEXTURE ) then
+					-- If more rows left to draw than can fit in a texture then draw the max possible
+					height = ( ROWS_IN_BG_TEXTURE*rowHeight ) - firstRowPixelOffset
+					bgTextureMiddle:SetHeight(ROWS_IN_BG_TEXTURE*rowHeight);
+					bgTextureMiddle:SetTexCoord(0, 1, firstRowTexCoordOffset, ( height/BG_TEXTURE_HEIGHT + firstRowTexCoordOffset) );
+					bgTextureMiddle:Show();
+					remainingRows = remainingRows - ROWS_IN_BG_TEXTURE;
+					middleBgHeight = middleBgHeight + ROWS_IN_BG_TEXTURE+rowHeight;
+				else
+					-- If not its a huge bag
+					bgTextureMiddle:Show();
+					height = remainingRows*rowHeight-firstRowPixelOffset;
+					bgTextureMiddle:SetHeight(remainingRows*rowHeight);
+					bgTextureMiddle:SetTexCoord(0, 1, firstRowTexCoordOffset, ( height/BG_TEXTURE_HEIGHT + firstRowTexCoordOffset) );
+					middleBgHeight = middleBgHeight + remainingRows*rowHeight;
+				end
+				if (extended and ContainerFrame1.forceExtended) then
+					if (not frame.extendedOverlay) then
+						frame.extendedOverlay = frame:CreateTexture(nil, "OVERLAY", 1);
+						frame.extendedOverlay:SetColorTexture(0.603, 0.875, 1);
+						frame.extendedOverlay:SetAlpha(1);
+						frame.extendedOverlay:SetBlendMode("MOD");
+					end
+					frame.extendedOverlay:SetWidth(CONTAINER_WIDTH-20);
+					frame.extendedOverlay:SetHeight(bgTextureMiddle:GetHeight()+2);
+					frame.extendedOverlay:SetPoint("CENTER", bgTextureMiddle, "CENTER", 34, -2);
+					frame.extendedOverlay:Show();
+				end
+			end
+			
+			-- Position and setup bottom texture
+			bgTextureBottom:SetPoint("TOP", bgTextureMiddle:GetName(), "BOTTOM", 0, 0);
+			bgTextureBottom:SetTexture("Interface\\ContainerFrame\\UI-BackpackBackground");
+			bgTextureBottom:SetHeight(BACKPACK_DEFAULT_TOPHEIGHT - BACKPACK_EXTENDED_TOPHEIGHT);
+			bgTextureBottom:SetTexCoord(0, 1, BACKPACK_EXTENDED_TOPHEIGHT / BACKPACK_DEFAULT_TOPHEIGHT, 1);
+			bgTextureBottom:Show();
+		end
+
+		BACKPACK_HEIGHT = BACKPACK_BASE_HEIGHT + middleBgHeight;
 		frame:SetHeight(BACKPACK_HEIGHT);
+		ManageBackpackTokenFrame(frame);
 	else
+		bgTextureBottom:SetHeight(CONTAINER_BOTTOM_TEXTURE_DEFAULT_HEIGHT);
+		bgTextureBottom:SetTexCoord(0, 1, CONTAINER_BOTTOM_TEXTURE_DEFAULT_TOP_COORD, CONTAINER_BOTTOM_TEXTURE_DEFAULT_BOTTOM_COORD);
 		if (size == 1) then
 			-- Halloween gag gift
 			bgTexture1Slot:Show();
@@ -693,6 +857,7 @@ function ContainerFrame_GenerateFrame(frame, size, id)
 			bgTextureMiddle2:Hide();
 			bgTextureBottom:Hide();
 			_G[name.."MoneyFrame"]:Hide();
+			_G[name.."AddSlotsButton"]:Hide();
 		else
 			bgTexture1Slot:Hide();
 			bgTextureTop:Show();
@@ -715,7 +880,8 @@ function ContainerFrame_GenerateFrame(frame, size, id)
 			bgTextureBottom:SetTexture("Interface\\ContainerFrame\\UI-Bag-Components"..bagTextureSuffix);
 			-- Hide the moneyframe since its not the backpack
 			_G[name.."MoneyFrame"]:Hide();	
-			
+			_G[name.."AddSlotsButton"]:Hide();
+						
 			local bgTextureCount, height;
 			local rowHeight = 41;
 			-- Subtract one, since the top texture contains one row already
@@ -808,6 +974,7 @@ function ContainerFrame_GenerateFrame(frame, size, id)
 			SetBagPortraitTexture(_G[frame:GetName().."Portrait"], id);
 		end
 
+		local baseSize = GetContainerNumSlots(id);
 		local index, itemButton;
 		for i=1, size, 1 do
 			index = size - i + 1;
@@ -817,19 +984,31 @@ function ContainerFrame_GenerateFrame(frame, size, id)
 			if ( i == 1 ) then
 				-- Anchor the first item differently if its the backpack frame
 				if ( id == 0 ) then
-					itemButton:SetPoint("BOTTOMRIGHT", name, "TOPRIGHT", -12, -225);
+					itemButton:SetPoint("BOTTOMRIGHT", name, "TOPRIGHT", -12, backpackFirstButtonOffset);
 				else
 					itemButton:SetPoint("BOTTOMRIGHT", name, "BOTTOMRIGHT", -12, 9);
 				end
-				
 			else
 				if ( mod((i-1), columns) == 0 ) then
+					itemButton.shouldAnimateStatic = true;
 					itemButton:SetPoint("BOTTOMRIGHT", name.."Item"..(i - columns), "TOPRIGHT", 0, 4);	
 				else
 					itemButton:SetPoint("BOTTOMRIGHT", name.."Item"..(i - 1), "BOTTOMLEFT", -5, 0);	
 				end
 			end
+			
 			itemButton:Show();
+		end
+		if (id == 0 and secured and not GetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_BAG_SLOTS_AUTHENTICATOR)) then
+			frame.ExtraBagSlotsHelpBox:Show();
+			ContainerFrame1.isHelpBoxShown = true;
+			ContainerFrame1.helpBoxFrame = frame.ExtraBagSlotsHelpBox;
+		else
+			frame.ExtraBagSlotsHelpBox:Hide();
+			if (id == 0) then
+				ContainerFrame1.isHelpBoxShown = false;
+				ContainerFrame1.helpBoxFrame = nil;
+			end
 		end
 	end
 	for i=size + 1, MAX_CONTAINER_ITEMS, 1 do
@@ -841,11 +1020,14 @@ function ContainerFrame_GenerateFrame(frame, size, id)
 
 	-- Add the bag to the baglist
 	frame:Show();
-	UpdateContainerFrameAnchors();
 	frame:Raise();
+	if (ContainerFrame1.isHelpBoxShown and ContainerFrame1.helpBoxFrame) then
+		ContainerFrame1.helpBoxFrame:Raise();
+	end
 end
 
 function UpdateContainerFrameAnchors()
+	local containerFrameOffsetX = math.max(CONTAINER_OFFSET_X, MINIMUM_CONTAINER_OFFSET_X);
 	local frame, xOffset, yOffset, screenHeight, freeScreenHeight, leftMostPoint, column;
 	local screenWidth = GetScreenWidth();
 	local containerScale = 1;
@@ -857,7 +1039,7 @@ function UpdateContainerFrameAnchors()
 	while ( containerScale > CONTAINER_SCALE ) do
 		screenHeight = GetScreenHeight() / containerScale;
 		-- Adjust the start anchor for bags depending on the multibars
-		xOffset = CONTAINER_OFFSET_X / containerScale; 
+		xOffset = containerFrameOffsetX / containerScale; 
 		yOffset = CONTAINER_OFFSET_Y / containerScale; 
 		-- freeScreenHeight determines when to start a new column of bags
 		freeScreenHeight = screenHeight - yOffset;
@@ -887,7 +1069,7 @@ function UpdateContainerFrameAnchors()
 	
 	screenHeight = GetScreenHeight() / containerScale;
 	-- Adjust the start anchor for bags depending on the multibars
-	xOffset = CONTAINER_OFFSET_X / containerScale;
+	xOffset = containerFrameOffsetX / containerScale;
 	yOffset = CONTAINER_OFFSET_Y / containerScale;
 	-- freeScreenHeight determines when to start a new column of bags
 	freeScreenHeight = screenHeight - yOffset;
@@ -926,10 +1108,10 @@ function ContainerFrameItemButton_UpdateItemUpgradeIcon(self)
 	self.timeSinceUpgradeCheck = 0;
 	
 	local itemIsUpgrade = IsContainerItemAnUpgrade(self:GetParent():GetID(), self:GetID());
-	if ( itemIsUpgrade == nil ) then -- nil means not all the data was available to determine if this is an upgrade.
+	if ( itemIsUpgrade == nil and not self.isExtended) then -- nil means not all the data was available to determine if this is an upgrade.
 		self.UpgradeIcon:SetShown(false);
 		self:SetScript("OnUpdate", ContainerFrameItemButton_OnUpdate);
-	else
+	elseif (not self.isExtended) then
 		self.UpgradeIcon:SetShown(itemIsUpgrade);
 		self:SetScript("OnUpdate", nil);
 	end
@@ -940,6 +1122,54 @@ function ContainerFrameItemButton_OnUpdate(self, elapsed)
 	self.timeSinceUpgradeCheck = self.timeSinceUpgradeCheck + elapsed;
 	if ( self.timeSinceUpgradeCheck >= ITEM_UPGRADE_CHECK_TIME ) then
 		ContainerFrameItemButton_UpdateItemUpgradeIcon(self);
+	end
+end
+
+local bagStaticDuration = 2.5;
+local bagStaticStartingHeight = 37;
+local bagStaticMovePerSec = bagStaticStartingHeight / bagStaticDuration;
+
+function ContainerFrameItemButton_BagStatic_AnimateUpdate(self, elapsed)
+	local shift = bagStaticMovePerSec * elapsed;
+	if (not self.currentHeight or (self.currentHeight - shift) <= 0) then
+		self.BagStaticTop:SetHeight(0);
+		self.BagStaticTop:SetTexCoord(0, 1, 0, 0);
+		self.BagStaticBottom:SetTexCoord(0, 1, 0, 1);
+		self.currentHeight = bagStaticStartingHeight;
+	end
+	self.currentHeight = self.currentHeight - shift;
+	self.BagStaticBottom:SetHeight(self.currentHeight);
+	self.BagStaticBottom:SetTexCoord(0, 1, 0, (self.currentHeight / bagStaticStartingHeight));
+	local topHeight = bagStaticStartingHeight - self.currentHeight;
+	if (topHeight < bagStaticStartingHeight and topHeight > 0) then
+		self.BagStaticTop:SetHeight(topHeight);
+		self.BagStaticTop:SetTexCoord(0, 1, 1 - (topHeight / bagStaticStartingHeight), 1);
+	end
+end
+
+function ContainerFrameItemButton_SetForceExtended(itemButton, extended)
+	if (extended) then
+		itemButton:GetNormalTexture():SetVertexColor(0.603, 0.875, 1);
+		itemButton.ExtendedOverlay:Show();
+		itemButton.ExtendedOverlay2:Show();
+		itemButton.ExtendedSlot:Show();
+		if ((itemButton:GetID() - 1) == GetContainerNumSlots(0)) then
+			itemButton.BagStaticBottom:Show();
+			itemButton.BagStaticTop:Show();
+			itemButton:SetScript("OnUpdate", ContainerFrameItemButton_BagStatic_AnimateUpdate);
+		end
+		itemButton:EnableMouse(false);
+		itemButton.isExtended = true;
+	else
+		itemButton:GetNormalTexture():SetVertexColor(1, 1, 1);
+		itemButton.ExtendedOverlay:Hide();
+		itemButton.ExtendedOverlay2:Hide();
+		itemButton.ExtendedSlot:Hide();
+		itemButton.BagStaticBottom:Hide();
+		itemButton.BagStaticTop:Hide();
+		itemButton:EnableMouse(true);
+		itemButton:SetScript("OnUpdate", nil);
+		itemButton.isExtended = false;
 	end
 end
 
@@ -1056,6 +1286,10 @@ function ContainerFrameItemButton_OnClick(self, button)
 				-- a confirmation dialog has been shown
 				return;
 			end
+		elseif AzeriteRespecFrame and AzeriteRespecFrame:IsShown() then
+			local itemLocation = ItemLocation:CreateFromBagAndSlot(self:GetParent():GetID(), self:GetID());
+			AzeriteRespecFrame:SetRespecItem(itemLocation);
+			return;
 		elseif ( not BankFrame:IsShown() and (not GuildBankFrame or not GuildBankFrame:IsShown()) and not MailFrame:IsShown() and (not VoidStorageFrame or not VoidStorageFrame:IsShown()) and
 					(not AuctionFrame or not AuctionFrame:IsShown()) and not TradeFrame:IsShown() and (not ItemUpgradeFrame or not ItemUpgradeFrame:IsShown()) and
 					(not ObliterumForgeFrame or not ObliterumForgeFrame:IsShown()) and (not ChallengesKeystoneFrame or not ChallengesKeystoneFrame:IsShown()) ) then
@@ -1074,11 +1308,18 @@ function ContainerFrameItemButton_OnClick(self, button)
 end
 
 function ContainerFrameItemButton_OnModifiedClick(self, button)
+	if ( IsModifiedClick("EXPANDITEM") ) then
+		local itemLocation = ItemLocation:CreateFromBagAndSlot(self:GetParent():GetID(), self:GetID());
+		if C_Item.DoesItemExist(itemLocation) and C_AzeriteEmpoweredItem.IsAzeriteEmpoweredItem(itemLocation) and C_Item.CanViewItemPowers(itemLocation) then
+			OpenAzeriteEmpoweredItemUIFromItemLocation(itemLocation);
+			return;
+		elseif SocketContainerItem(self:GetParent():GetID(), self:GetID()) then
+			return;
+		end
+	end
+
 	if ( HandleModifiedItemClick(GetContainerItemLink(self:GetParent():GetID(), self:GetID())) ) then
 		return;
-	end
-	if ( IsModifiedClick("SOCKETITEM") ) then
-		SocketContainerItem(self:GetParent():GetID(), self:GetID());
 	end
 	if ( not CursorHasItem() and IsModifiedClick("SPLITSTACK") ) then
 		local texture, itemCount, locked = GetContainerItemInfo(self:GetParent():GetID(), self:GetID());
@@ -1086,37 +1327,21 @@ function ContainerFrameItemButton_OnModifiedClick(self, button)
 			self.SplitStack = function(button, split)
 				SplitContainerItem(button:GetParent():GetID(), button:GetID(), split);
 			end
-			OpenStackSplitFrame(itemCount, self, "BOTTOMRIGHT", "TOPRIGHT");
+			StackSplitFrame:OpenStackSplitFrame(itemCount, self, "BOTTOMRIGHT", "TOPRIGHT");
 		end
 	end
 end
 
-function ContainerFrameItemButton_CalculateItemTooltipAnchors(self, mainTooltip, secondaryTooltip)
+function ContainerFrameItemButton_CalculateItemTooltipAnchors(self, mainTooltip)
 	local x = self:GetRight();
-
 	local anchorFromLeft = x < GetScreenWidth() / 2;
-
-	if ( secondaryTooltip and secondaryTooltip:IsShown() ) then
-		-- Always put the primary tooltip on the left
-		if ( anchorFromLeft ) then
-			mainTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT");
-			secondaryTooltip:SetPoint("TOPLEFT", mainTooltip, "TOPRIGHT", 0, 0);
-			mainTooltip.overrideComparisonAnchorFrame = secondaryTooltip;
-			mainTooltip.overrideComparisonAnchorSide = "right";
-		else
-			secondaryTooltip:SetPoint("BOTTOMRIGHT", self, "TOPLEFT");
-			mainTooltip:SetPoint("TOPRIGHT", secondaryTooltip, "TOPLEFT", 0, 0);
-			mainTooltip.overrideComparisonAnchorSide = "left";
-		end
-		return true;
+	if ( anchorFromLeft ) then
+		mainTooltip:SetAnchorType("ANCHOR_RIGHT", 0, 0);
+		mainTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT");
 	else
-		if ( anchorFromLeft ) then
-			mainTooltip:SetPoint("BOTTOMLEFT", self, "TOPRIGHT");
-		else
-			mainTooltip:SetPoint("BOTTOMRIGHT", self, "TOPLEFT");
-		end
+		mainTooltip:SetAnchorType("ANCHOR_LEFT", 0, 0);
+		mainTooltip:SetPoint("BOTTOMRIGHT", self, "TOPLEFT");
 	end
-	return false;
 end
 
 function ContainerFrameItemButton_OnEnter(self)
@@ -1157,9 +1382,9 @@ function ContainerFrameItemButton_OnEnter(self)
 		end
 	end
 
-	local requiresCompareTooltipReanchor = ContainerFrameItemButton_CalculateItemTooltipAnchors(self, GameTooltip);
+	ContainerFrameItemButton_CalculateItemTooltipAnchors(self, GameTooltip);
 
-	if ( requiresCompareTooltipReanchor and (IsModifiedClick("COMPAREITEMS") or GetCVarBool("alwaysCompareItems")) ) then
+	if ( IsModifiedClick("COMPAREITEMS") or GetCVarBool("alwaysCompareItems") ) then
 		GameTooltip_ShowCompareItem(GameTooltip);
 	end
 
@@ -1193,6 +1418,12 @@ function ContainerFrameItemButton_OnLeave(self)
 	if ArtifactFrame then
 		ArtifactFrame:OnInventoryItemMouseLeave(self:GetParent():GetID(), self:GetID());
 	end
+end
+
+ContainerFrameItemButtonMixin = {};
+
+function ContainerFrameItemButtonMixin:GetItemContextMatchResult()
+	return ItemButtonUtil.GetItemContextMatchResultForItem(ItemLocation:CreateFromBagAndSlot(self:GetParent():GetID(), self:GetID()));
 end
 
 function ContainerFramePortraitButton_OnEnter(self)
@@ -1327,7 +1558,7 @@ function OpenAllBags(frame)
 	CheckBagSettingsTutorial();
 end
 
-function CloseAllBags(frame)	
+function CloseAllBags(frame)
 	if ( frame and frame:GetName() ~= FRAME_THAT_OPENED_BAGS) then
 		return;
 	end

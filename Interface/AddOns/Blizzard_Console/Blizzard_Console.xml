@@ -65,10 +65,7 @@
 				</Frames>
 				<Scripts>
 					<OnUpdate>
-						local parent = self:GetParent();
-						if not parent.Filters.EditBox:HasFocus() and parent.savedVars.isShown then
-							self:SetFocus();
-						end
+						self:GetParent():OnEditBoxUpdate();
 					</OnUpdate>
 					<OnTextChanged>
 						local text = self:GetText();
@@ -82,8 +79,11 @@
 						if IsShiftKeyDown() then
 							self:Insert("\n");
 						else
-							self:GetParent():ExecuteCommand(self:GetText());
-							self:SetText("");
+							local text = self:GetText();
+							if text and #text > 0 then
+								self:GetParent():ExecuteCommand(self:GetText());
+								self:SetText("");
+							end
 						end
 					</OnEnterPressed>
 					<OnTabPressed>
@@ -176,7 +176,7 @@
 							</OnTextChanged>
 
 							<OnEscapePressed>
-								if self:GetText() and self:GetText() > 0 then
+								if self:GetText() and #self:GetText() > 0 then
 									self:SetText("");
 									return;
 								end
@@ -205,7 +205,7 @@
 				</Frames>
 			</Frame>
 			
-			<ScrollingMessageFrame parentKey="MessageFrame" enableMouse="true">
+			<ScrollingMessageFrame parentKey="MessageFrame" enableMouseClicks="true">
 				<Anchors>
 					<Anchor point="TOPLEFT" relativeKey="$parent.Filters" relativePoint="BOTTOMLEFT" x="0" y="-4" />
 					<Anchor point="TOPRIGHT" relativeKey="$parent.Filters" relativePoint="BOTTOMRIGHT" x="-15" y="-4" />
@@ -225,6 +225,32 @@
 					</Layer>
 				</Layers>
 				<Frames>
+					<Frame parentKey="CopyNoticeFrame" frameLevel="9800" hidden="true">
+						<Size y="75" />
+						<Anchors>
+							<Anchor point="TOPLEFT" relativePoint="BOTTOMLEFT" />
+							<Anchor point="TOPRIGHT" relativePoint="BOTTOMRIGHT" />
+						</Anchors>
+						<Layers>
+							<Layer level="OVERLAY">
+								<FontString parentKey="Label" inherits="SystemFont_Shadow_Large">
+									<Color r="1" g="1" b="0"/>
+								</FontString>
+							</Layer>
+						</Layers>
+						<Animations>
+							<AnimationGroup parentKey="Anim">
+								<Alpha fromAlpha="0" toAlpha="1" duration=".25" order="1"/>
+								<Alpha fromAlpha="1" toAlpha="0" startDelay="1" duration=".5" order="2"/>
+
+								<Scripts>
+									<OnFinished>
+										self:GetParent():Hide();
+									</OnFinished>
+								</Scripts>
+							</AnimationGroup>
+						</Animations>
+					</Frame>
 					<Slider parentKey="ScrollBar" frameLevel="9500" obeyStepOnDrag="true" valueStep="1" minValue="0" maxValue="1">
 						<Size x="15" y="0"/>
 						<Anchors>
@@ -273,7 +299,17 @@
 						self:SetTextCopyable(true);
 					</OnLoad>
 					<OnHyperlinkClick>
-						ConsoleExec(link:sub(2), true);
+						local command = link:sub(2);
+						if IsShiftKeyDown() then
+							self:GetParent():InsertLinkedCommand(command);
+						else
+							forceinsecure();
+							ConsoleExec(command, true);
+							if button == "RightButton" then
+								self:GetParent():AddToCommandHistory(command);
+								self:GetParent():ResetCommandHistoryIndex();
+							end
+						end
 					</OnHyperlinkClick>
 				</Scripts>
 			</ScrollingMessageFrame>

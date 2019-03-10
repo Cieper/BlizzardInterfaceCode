@@ -11,7 +11,7 @@
 				</Texture>
 			</Layer>
 			<Layer level="ARTWORK" textureSubLevel="1">
-				<Texture parentKey="AlphaIconOverlay" textureSubLevel="1">
+				<Texture parentKey="AlphaIconOverlay">
 					<Color a="1" r="0.0" g="0.0" b="0.0"/>
 				</Texture>
 			</Layer>
@@ -104,6 +104,7 @@
 	<FontString parentArray="FrameTick" name="OrderHallTalentFrameTick" inherits="GameFontNormal" virtual="true">
 		<Color r="0.27" g="0.27" b="0.27"/>
 	</FontString>
+
 	<Frame name="OrderHallTalentFrame" inherits="PortraitFrameTemplate" toplevel="true" enableMouse="true" parent="UIParent" hidden="true" mixin="OrderHallTalentFrameMixin">
 		<Size x="336" y="566"/>
 		<Scripts>
@@ -112,31 +113,23 @@
 			<OnHide method="OnHide"/>
 			<OnEvent method="OnEvent"/>
 		</Scripts>
-		<KeyValues>
-			<KeyValue key="garrisonType" value="LE_GARRISON_TYPE_7_0" type="global"/>
-		</KeyValues>
 		<Layers>
 			<Layer level="BACKGROUND">
 				<Texture parentKey="Background">
 					<Size x="322" y="498"/>
 					<Anchors>
-						<Anchor point="TOPLEFT" relativeTo="OrderHallTalentFrameBg" x="4" y="-40"/>
+						<Anchor point="TOPLEFT" relativeKey="$parent.Bg" x="4" y="-40"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="BACKGROUND" textureSubLevel="1">
+				<Texture parentKey="CurrencyBG">
+					<Anchors>
+						<Anchor point="TOP" x="0" y="-50"/>
 					</Anchors>
 				</Texture>
 			</Layer>
 			<Layer level="ARTWORK">
-				<Texture parentKey="CurrencyIcon" atlas="legionmission-icon-currency" useAtlasSize="false">
-					<Size x="27" y="26"/>
-					<Anchors>
-						<Anchor point="TOPRIGHT" x="-12" y="-29"/>
-					</Anchors>
-				</Texture>
-				<FontString parentKey="Currency" inherits="SystemFont_Shadow_Med2" justifyH="RIGHT">
-					<Size x="100" y="20"/>
-					<Anchors>
-						<Anchor point="RIGHT" relativeKey="$parent.CurrencyIcon" relativePoint="LEFT" x="-4" y="0"/>
-					</Anchors>
-				</FontString>
 				<FontString parentKey="Tick1" inherits="OrderHallTalentFrameTick" text="I">
 					<Anchors>
 						<Anchor point="TOPLEFT" x="24" y="-99"/>
@@ -180,12 +173,43 @@
 			</Layer>
 		</Layers>
 		<Frames>
+			<Frame parentKey="OverlayElements" frameLevel="510" setAllPoints="true">
+				<Layers>
+					<Layer level="ARTWORK">
+						<Texture parentKey="CornerLogo" useAtlasSize="true">
+							<Anchors>
+								<Anchor point="TOPLEFT"/>
+							</Anchors>
+						</Texture>
+					</Layer>
+				</Layers>
+			</Frame>
+			<Frame parentKey="Currency" inherits="ResizeLayoutFrame">
+				<!-- Size/Anchor updated in talent frame OnLoad -->
+				<Anchors>
+					<Anchor point="TOP" x="0" y="0"/>
+				</Anchors>
+				<Layers>
+					<Layer level="ARTWORK">
+						<FontString parentKey="Text" inherits="SystemFont_Shadow_Med2" justifyH="LEFT">
+							<Size x="0" y="20"/>
+							<Anchors>
+								<Anchor point="LEFT"/>
+							</Anchors>
+						</FontString>
+						<Texture parentKey="Icon" atlas="legionmission-icon-currency" useAtlasSize="false">
+							<Size x="27" y="26"/>
+							<Anchors>
+								<Anchor point="LEFT" relativeKey="$parent.Text" relativePoint="RIGHT" x="4" y="0"/>
+							</Anchors>
+						</Texture>
+					</Layer>
+				</Layers>
+			</Frame>
 			<Frame parentKey="CurrencyHitTest">
 				<Anchors>
-					<Anchor point="LEFT" relativeKey="$parent.Currency"/>
-					<Anchor point="RIGHT" relativeKey="$parent.CurrencyIcon"/>
-					<Anchor point="TOP" relativeKey="$parent.CurrencyIcon"/>
-					<Anchor point="BOTTOM" relativeKey="$parent.CurrencyIcon"/>
+					<Anchor point="TOPLEFT" relativeKey="$parent.Currency"/>
+					<Anchor point="BOTTOMRIGHT" relativeKey="$parent.Currency"/>
 				</Anchors>
 				<Scripts>
 					<OnEnter>
@@ -196,12 +220,8 @@
 					<OnLeave function="GameTooltip_Hide"/>
 				</Scripts>
 			</Frame>
-			<Frame name="ClassHallTalentInset" inherits="InsetFrameTemplate" parentKey="LeftInset" useParentLevel="true">
+			<Frame parentKey="Inset" inherits="InsetFrameTemplate" useParentLevel="true">
 				<Size x="328" y="504"/>
-				<Anchors>
-					<Anchor point="TOPLEFT" x="3" y="-58"/>
-					<Anchor point="BOTTOMRIGHT" relativeTo="TradeFrame" relativePoint="TOPLEFT" x="338" y="-352"/>
-				</Anchors>
 			</Frame>
 			<Button parentKey="BackButton" inherits="UIPanelButtonTemplate" text="BACK">
 				<Size x="86" y="22"/>
@@ -210,12 +230,11 @@
 				</Anchors>
 				<Scripts>
 					<OnClick>
-						PlaySound("igMainMenuOptionCheckBoxOn");
+						PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON);
 						ReopenInteraction();
 					</OnClick>
 				</Scripts>
 			</Button>
-
 		</Frames>
 	</Frame>
 </Ui>

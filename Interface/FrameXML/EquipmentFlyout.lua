@@ -59,7 +59,7 @@ function EquipmentFlyout_CreateButton()
 	local buttonAnchor = EquipmentFlyoutFrame.buttonFrame;
 	local numButtons = #buttons;
 	
-	local button = CreateFrame("BUTTON", "EquipmentFlyoutFrameButton" .. numButtons + 1, buttonAnchor, "EquipmentFlyoutButtonTemplate");
+	local button = CreateFrame("ItemButton", "EquipmentFlyoutFrameButton" .. numButtons + 1, buttonAnchor, "EquipmentFlyoutButtonTemplate");
 
 	local pos = numButtons/EQUIPMENTFLYOUT_ITEMS_PER_ROW;
 	if ( math.floor(pos) == pos ) then
@@ -378,7 +378,7 @@ function EquipmentFlyout_DisplayButton(button, paperDollItemSlot)
 		return;
 	end
 
-	local id, name, textureName, count, durability, maxDurability, invType, locked, start, duration, enable, setTooltip, quality, isUpgrade = EquipmentManager_GetItemInfoByLocation(location);
+	local itemID, name, textureName, count, durability, maxDurability, invType, locked, start, duration, enable, setTooltip, quality, isUpgrade = EquipmentManager_GetItemInfoByLocation(location);
 	button.UpgradeIcon:SetShown(isUpgrade);
 	local broken = ( maxDurability and durability == 0 );
 	if ( textureName ) then
@@ -392,7 +392,7 @@ function EquipmentFlyout_DisplayButton(button, paperDollItemSlot)
 			SetItemButtonNormalTextureVertexColor(button, 1.0, 1.0, 1.0);
 		end
 
-		SetItemButtonQuality(button, quality);
+		SetItemButtonQuality(button, quality, itemID);
 
 		CooldownFrame_Set(button.cooldown, start, duration, enable);
 		
@@ -418,6 +418,12 @@ end
 function EquipmentFlyout_DisplaySpecialButton(button, paperDollItemSlot)
 	local location = button.location;
 	button.UpgradeIcon:Hide();
+	button.IconOverlay:Hide();
+	
+	local quality = nil;
+	local itemID = nil;
+	SetItemButtonQuality(button, quality, itemID);
+
 	if ( location == EQUIPMENTFLYOUT_IGNORESLOT_LOCATION ) then
 		SetItemButtonTexture(button, "Interface\\PaperDollInfoFrame\\UI-GearManager-LeaveItem-Opaque");
 		SetItemButtonCount(button, nil);

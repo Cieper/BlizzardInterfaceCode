@@ -50,7 +50,7 @@
 			</Layer>
 		</Layers>
 		<Frames>
-			<DressUpModel name="SideDressUpModel" scale="1.0" inherits="ModelWithControlsTemplate">
+			<DressUpModel name="SideDressUpModel" modelScale="1.0" inherits="ModelWithControlsTemplate">
 				<Size>
 					<AbsDimension x="172" y="400"/>
 				</Size>
@@ -123,7 +123,7 @@
 			<OnHide function="SideDressUpFrame_OnHide"/>
 		</Scripts>
 	</Frame> 
-	<Frame name="DressUpFrame" toplevel="true" enableMouse="true" parent="UIParent" hidden="true" inherits="ButtonFrameTemplate">
+	<Frame name="DressUpFrame" toplevel="true" enableMouse="true" parent="UIParent" hidden="true" inherits="ButtonFrameTemplateMinimizable">
 		<Size x="450" y="545"/>
 		<Anchors>
 			<Anchor point="TOPLEFT" x="70" y="-104"/>
@@ -139,7 +139,7 @@
 					<KeyValue key="maxMenuStringWidth" value="190" type="number"/>
 				</KeyValues>
 				<Anchors>
-					<Anchor point="TOP" x="-23" y="-30"/>
+					<Anchor point="TOP" x="-23" y="-28"/>
 				</Anchors>
 			</Frame>
 			<Frame name="MaximizeMinimizeFrame" inherits="MaximizeMinimizeButtonFrameTemplate">
@@ -147,15 +147,17 @@
 					<Anchor point="RIGHT" relativeKey="$parent.CloseButton" relativePoint="LEFT" x="10" y="0"/>
 				</Anchors>
 				<Scripts>
-					<OnLoad>
+					<OnLoad>						
 						function OnMaximize(frame)
 							frame:GetParent():SetSize(450, 545);
+							UpdateUIPanelPositions(frame);
 						end
 						
 						self:SetOnMaximizedCallback(OnMaximize);
 						
 						function OnMinimize(frame)
 							frame:GetParent():SetSize(334, 423);
+							UpdateUIPanelPositions(frame);
 						end
 						
 						self:SetOnMinimizedCallback(OnMinimize);
@@ -167,7 +169,7 @@
 			<Button name="DressUpFrameCancelButton" inherits="UIPanelButtonTemplate" text="CLOSE">
 				<Size x="80" y="22"/>
 				<Anchors>
-					<Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" x="-2" y="2"/>
+					<Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" x="-7" y="4"/>
 				</Anchors>
 				<Scripts>
 					<OnClick function="HideParentPanel"/>
@@ -212,6 +214,9 @@
 			</Layer>
 		</Layers>
 		<Scripts>
+			<OnLoad>
+				self.TitleText:SetText(DRESSUP_FRAME);
+			</OnLoad>
 			<OnShow>
 				SetPortraitTexture(DressUpFramePortrait, "player");
 				PlaySound(SOUNDKIT.IG_CHARACTER_INFO_OPEN);

@@ -28,6 +28,14 @@ function DeveloperConsoleMixin:OnLoad()
 		messageFrame.ScrollBar:SetValue(messageFrame:GetNumMessages() - offset);
 	end);
 
+	self.MessageFrame:SetOnTextCopiedCallback(function(messageFrame, text, numCharsCopied)
+		messageFrame.CopyNoticeFrame.Anim:Stop();
+
+		messageFrame.CopyNoticeFrame.Label:SetFormattedText("%s characters copied to clipboard.", BreakUpLargeNumbers(numCharsCopied))
+		messageFrame.CopyNoticeFrame:Show();
+		messageFrame.CopyNoticeFrame.Anim:Play();
+	end);
+
 	self.filterText = "";
 end
 
@@ -38,11 +46,11 @@ function DeveloperConsoleMixin:RestoreMessageHistory()
 
 		local numElements = math.min(MAX_NUM_MESSAGE_HISTORY, #messageHistory);
 
-		for i = (#messageHistory - numElements) + 1, numElements do
+		for i = (#messageHistory - numElements) + 1, #messageHistory do
 			local message, colorType = unpack(messageHistory[i]);
 			local color = C_Console.GetColorFromType(colorType);
 			local r, g, b = color:GetRGB();
-			self.MessageFrame:AddMessage(message, r, g, b, colorType);
+			self:AddMessageInternal(message, r, g, b, colorType);
 			table.insert(self.savedVars.messageHistory, messageHistory[i]);
 		end
 
@@ -63,7 +71,7 @@ function DeveloperConsoleMixin:RestoreCommandHistory()
 
 		local numElements = math.min(MAX_NUM_COMMAND_HISTORY, #commandHistory);
 
-		for i = (#commandHistory - numElements) + 1, numElements do
+		for i = (#commandHistory - numElements) + 1, #commandHistory do
 			self.commandCircularBuffer:PushFront(commandHistory[i]);
 			table.insert(self.savedVars.commandHistory, commandHistory[i]);
 		end
@@ -120,18 +128,22 @@ function DeveloperConsoleMixin:OnEvent(event, ...)
 end
 
 function DeveloperConsoleMixin:AddMessage(message, colorType)
-	message = message:gsub("\n", "");
-
 	if not colorType then
 		colorType = Enum.ConsoleColorType.DefaultColor;
 	end
 	local color = C_Console.GetColorFromType(colorType);
-
 	local r, g, b = color:GetRGB();
-	self.MessageFrame:AddMessage(message, r, g, b, colorType);
-	self:UpdateScrollbar();
 
+	self:AddMessageInternal(message, r, g, b, colorType);
+	
 	table.insert(self.savedVars.messageHistory, { message, colorType });
+	self:UpdateScrollbar();
+end
+
+function DeveloperConsoleMixin:AddMessageInternal(message, r, g, b, colorType)
+	for line in message:gmatch("[^\r\n]+") do
+		self.MessageFrame:AddMessage(line, r, g, b, colorType);
+	end
 end
 
 function DeveloperConsoleMixin:Clear()
@@ -162,7 +174,8 @@ function DeveloperConsoleMixin:RefreshMessageFrame()
 		local message, colorType = unpack(messageInfo);
 		local color = C_Console.GetColorFromType(colorType);
 		local r, g, b = color:GetRGB();
-		self.MessageFrame:AddMessage(message, r, g, b, colorType);
+
+		self:AddMessageInternal(message, r, g, b, colorType);
 	end
 end
 
@@ -204,6 +217,8 @@ function DeveloperConsoleMixin:Toggle(shownRequested)
 			self:Show();
 		else
 			self.EditBox:ClearFocus();
+			self.MessageFrame.CopyNoticeFrame.Anim:Stop();
+			self.MessageFrame.CopyNoticeFrame:Hide()
 		end
 	
 		self.Anim.Translation:SetOffset(0, self.savedVars.height);
@@ -222,6 +237,28 @@ function DeveloperConsoleMixin:OnEscapePressed()
 	end
 
 	self:Toggle(false);
+end
+
+function DeveloperConsoleMixin:ShouldEditBoxTakeFocus()
+	if not self.savedVars.isShown then
+		return false;
+	end
+
+	if self.Filters.EditBox:HasFocus() then
+		return false;
+	end
+
+	if ScriptErrorsFrame:GetEditBox():HasFocus() then
+		return false;
+	end
+
+	return true;
+end
+
+function DeveloperConsoleMixin:OnEditBoxUpdate()
+	if self:ShouldEditBoxTakeFocus() then
+		self.EditBox:SetFocus();
+	end
 end
 
 function DeveloperConsoleMixin:UpdateScrollbar()
@@ -262,13 +299,23 @@ function DeveloperConsoleMixin:StopDragResizing()
 end
 
 function DeveloperConsoleMixin:ExecuteCommand(text)
+	forceinsecure();
 	ConsoleExec(text, true);
 	self:AddMessage(("> %s"):format(text:gsub("\n", " > ")), Enum.ConsoleColorType.InputColor);
+
+	self:AddToCommandHistory(text);
+	self:ResetCommandHistoryIndex();
+end
+
+function DeveloperConsoleMixin:AddToCommandHistory(text)
 	if self.commandCircularBuffer:GetEntryAtIndex(1) ~= text then
 		self.commandCircularBuffer:PushFront(text);
 		table.insert(self.savedVars.commandHistory, text);
 	end
-	self:ResetCommandHistoryIndex();
+end
+
+function DeveloperConsoleMixin:InsertLinkedCommand(text)
+	self.EditBox:Insert(text);
 end
 
 function DeveloperConsoleMixin:OnEditBoxTextChanged(text)
@@ -316,6 +363,7 @@ function DeveloperConsoleMixin:OnEditBoxTabPressed()
 	if IsControlKeyDown() then
 		C_Console.PrintAllMatchingCommands((self:FindBestEditCommand()));
 	else
+		self.AutoComplete:FinishWork();
 		if IsShiftKeyDown() then
 			if self.AutoComplete:PreviousEntry() then
 				return;

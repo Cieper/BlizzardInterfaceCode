@@ -526,7 +526,7 @@
 				</Scripts>
 			</StatusBar>
 
-			<ModelScene parentKey="modelScene" useParentLevel="true" inherits="ModelSceneMixinTemplate">
+			<ModelScene parentKey="modelScene" useParentLevel="true" inherits="ReversedLightingModelSceneMixinTemplate">
 				<Size x="130" y="96"/>
 				<Anchors>
 					<Anchor point="TOPRIGHT" x="0" y="0"/>
@@ -914,7 +914,7 @@
 							<Anchors>
 								<Anchor point="RIGHT" relativePoint="LEFT" relativeTo="$parentBorder" x="-2" y="0"/>
 							</Anchors>
-							<Size x="120" y="0"/>
+							<Size x="130" y="0"/>
 							<Color r="1" g="1" b="1"/>
 						</FontString>
 					</Layer>
@@ -1770,13 +1770,12 @@
 							</Anchors>
 							<TexCoords left="0" right=".5" top="0" bottom="0.5"/>
 						</Texture>
-						<Fontstring parentKey="SumText" inherits="GameFontNormalLarge" text="25">
+						<FontString parentKey="SumText" inherits="GameFontNormalLarge" text="25">
 							<Anchors>
 								<Anchor point="RIGHT" relativePoint="LEFT" relativeTo="$parentIcon" x="-4" y="4"/>
 							</Anchors>
 							<Size x="0" y="0"/>
-							<TexCoords left="0.75683594" right="0.98632813" top="0.00097656" bottom="0.04882813"/>
-						</Fontstring>
+						</FontString>
 					</Layer>
 				</Layers>
 				<Scripts>
@@ -1835,9 +1834,6 @@
 					</CheckButton>
  				</Frames>
 				<Scripts>
-					<OnShow>
-						self:SetFrameLevel(self:GetFrameLevel() + 5);
-					</OnShow>
 					<OnHide>
 						PetJournalPrimaryAbilityTooltip:Hide();
 						PetJournalSecondaryAbilityTooltip:Hide();

@@ -26,11 +26,13 @@ function CommentatorUnitFrameMixin:Initialize(align)
 	self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED");
 	self:RegisterEvent("ARENA_COOLDOWNS_UPDATE");
 	self:RegisterEvent("ARENA_CROWD_CONTROL_SPELL_UPDATE");
+	
+	self.DeadText:SetFontObjectsToTry(CommentatorDeadFontDefault, CommentatorDeadFontMedium, CommentatorDeadFontSmall);
 end
 
 function CommentatorUnitFrameMixin:OnEvent(event, ...)	
 	if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-		self:OnCombatEvent(...);
+		self:OnCombatEvent(CombatLogGetCurrentEventInfo());
 	elseif event == "COMMENTATOR_PLAYER_UPDATE" then
 		self:FullCooldownRefresh();
 	elseif ( event == "ARENA_COOLDOWNS_UPDATE" ) then
@@ -45,6 +47,10 @@ function CommentatorUnitFrameMixin:OnEvent(event, ...)
 			self:SetCrowdControlRemoverIcon(spellID);
 		end
 	end
+end
+
+function CommentatorUnitFrameMixin:OnSizeChanged()
+	self.DeadText:ApplyFontObjects();
 end
 
 local LAYOUT_TABLE = {
@@ -219,6 +225,7 @@ function CommentatorUnitFrameMixin:SetTeamAndPlayer(teamIndex, playerIndex)
 		self.tokenChanging = true;
 
 		self.Name:SetText(playerName);
+		self.Name:SetTextColor(C_Commentator.GetTeamHighlightColor(teamIndex));
 
 		self:SetClass(select(2, UnitClass(self.token)))
 
@@ -287,7 +294,7 @@ function CommentatorUnitFrameMixin:SetVisibility(canBeVisible)
 end
 
 function CommentatorUnitFrameMixin:UpdateVisibility()
-	self:SetShown(self.canBeVisible and self.token ~= nil);
+	self:SetShown(self.canBeVisible and self:IsValid());
 end
 
 function CommentatorUnitFrameMixin:ShouldResetAnimatedBars()
@@ -519,6 +526,8 @@ function CommentatorUnitFrameMixin:UpdateCrowdControlAurasText()
 	end
 end
 
+BLIZZARD_COMMENTATOR_MAX_NUM_OFFENSIVE_COOLDOWNS = BLIZZARD_COMMENTATOR_MAX_NUM_OFFENSIVE_COOLDOWNS or 5;
+BLIZZARD_COMMENTATOR_MAX_NUM_DEFENSIVE_COOLDOWNS = BLIZZARD_COMMENTATOR_MAX_NUM_DEFENSIVE_COOLDOWNS or 5;	
 function CommentatorUnitFrameMixin:FullCooldownRefresh()
 	local PADDING = 11;
 	self.needsCooldownData = false;
@@ -526,6 +535,10 @@ function CommentatorUnitFrameMixin:FullCooldownRefresh()
 	
 	local offensiveCooldowns = C_Commentator.GetTrackedOffensiveCooldowns(self.teamIndex, self.playerIndex);
 	if offensiveCooldowns then
+		while #offensiveCooldowns > BLIZZARD_COMMENTATOR_MAX_NUM_OFFENSIVE_COOLDOWNS do
+			offensiveCooldowns[#offensiveCooldowns] = nil;
+		end
+		
 		self.offensiveCooldownPool:SetCooldowns(offensiveCooldowns, self.OffensiveCooldownContainer, "LEFT", PADDING);	
 	else
 		self.needsCooldownData = true;
@@ -533,6 +546,10 @@ function CommentatorUnitFrameMixin:FullCooldownRefresh()
 	
 	local defensiveCooldowns = C_Commentator.GetTrackedDefensiveCooldowns(self.teamIndex, self.playerIndex);
 	if defensiveCooldowns then
+		while #defensiveCooldowns > BLIZZARD_COMMENTATOR_MAX_NUM_DEFENSIVE_COOLDOWNS do
+			defensiveCooldowns[#defensiveCooldowns] = nil;
+		end
+		
 		self.defensiveCooldownPool:SetCooldowns(defensiveCooldowns, self.DefensiveCooldownContainer, "LEFT", PADDING);
 	else
 		self.needsCooldownData = true;

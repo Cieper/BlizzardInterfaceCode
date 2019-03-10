@@ -92,7 +92,6 @@ function PetJournalUtil_GetDisplayName(petID)
 end
 
 function PetJournal_OnLoad(self)
-	self:RegisterEvent("UNIT_PORTRAIT_UPDATE");
 	self:RegisterEvent("PET_JOURNAL_LIST_UPDATE");
 	self:RegisterEvent("PET_JOURNAL_PET_DELETED");
 	self:RegisterEvent("PET_JOURNAL_PETS_HEALED");
@@ -129,7 +128,7 @@ function PetJournal_OnShow(self)
 		end
 	end
 
-	SetPortraitToTexture(CollectionsJournalPortrait, "Interface\\Icons\\PetJournalPortrait");
+	PortraitFrameTemplate_SetPortraitToAsset(CollectionsJournal, "Interface\\Icons\\PetJournalPortrait");
 end
 
 function PetJournal_OnHide(self)
@@ -250,7 +249,7 @@ end
 
 function PetJournalHealPetButton_OnLoad(self)
 	self.spellID = HEAL_PET_SPELL;
-	local spellName, spellSubname, spellIcon = GetSpellInfo(self.spellID);
+	local spellName, _, spellIcon = GetSpellInfo(self.spellID);
 	self.texture:SetTexture(spellIcon);
 	self.spellname:SetText(spellName);
 end
@@ -340,7 +339,7 @@ end
 function PetJournalSummonRandomFavoritePetButton_OnLoad(self)
 	self.spellID = SUMMON_RANDOM_FAVORITE_PET_SPELL;
 	self.petID = C_PetJournal.GetSummonRandomFavoritePetGUID();
-	local spellName, spellSubname, spellIcon = GetSpellInfo(self.spellID);
+	local spellName, _, spellIcon = GetSpellInfo(self.spellID);
 	self.texture:SetTexture(spellIcon);
 	self.spellname:SetText(PET_JOURNAL_SUMMON_RANDOM_FAVORITE_PET);
 end
@@ -380,7 +379,7 @@ function PetJournalSummonRandomFavoritePetButton_UpdateSpellUsability(self)
 			self.BlackCover:Hide();
 			self:RegisterForClicks("LeftButtonUp", "RightButtonUp");
 			self:RegisterForDrag("LeftButton");
-		end																				
+		end
 	else
 		self.BlackCover:Show();
 		self.texture:SetDesaturated(true);
@@ -411,7 +410,7 @@ function PetJournalSummonRandomFavoritePetButton_OnEnter(self)
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
 
 	local numPets, numOwned = C_PetJournal.GetNumPets();
-	if ( numOwned > 0 and not C_PetBattles.IsInBattle()  ) then 
+	if ( numOwned > 0 and not C_PetBattles.IsInBattle()  ) then
 		GameTooltip:SetCompanionPet(self.petID);
 	else
 		GameTooltip:SetSpellByID(self.spellID);
@@ -483,7 +482,7 @@ function PetJournal_ShowPetSelect(self)
 	self.selected:Show();
 	PetJournal.SpellSelect.slotIndex = slotIndex;
 	PetJournal.SpellSelect.abilityIndex = abilityIndex;
-	PetJournal.SpellSelect:SetFrameLevel(PetJournalLoadoutBorder:GetFrameLevel()+1);
+	PetJournal.SpellSelect:SetFrameLevel(CollectionsJournal.NineSlice:GetFrameLevel() + 1);
 	PetJournal_HideAbilityTooltip();
 
 	--Setup spell one
@@ -593,7 +592,8 @@ function PetJournal_UpdatePetLoadOut(forceSceneChange)
 				loadoutPlate.requirement.str:SetText(GetAchievementLink(UNLOCK_REQUIREMENTS[i].id));
 				loadoutPlate.requirement.achievementID = UNLOCK_REQUIREMENTS[i].id;
 			elseif (UNLOCK_REQUIREMENTS[i].requirement == "SPELL" and UNLOCK_REQUIREMENTS[i].id) then
-				loadoutPlate.requirement.str:SetText(GetSpellLink(UNLOCK_REQUIREMENTS[i].id));
+				local spellLink = GetSpellLink(UNLOCK_REQUIREMENTS[i].id);
+				loadoutPlate.requirement.str:SetText(spellLink);
 				loadoutPlate.requirement.spellID = UNLOCK_REQUIREMENTS[i].id;
 			end
 			loadoutPlate.helpFrame.text:SetText(_G["BATTLE_PET_UNLOCK_HELP_"..i]);
@@ -1147,6 +1147,7 @@ function PetJournal_UpdatePetCard(self, forceSceneChange)
 	local isDead = false;
 	local needsFanfare = false;
 	local speciesID, customName, level, name, icon, petType, creatureID, xp, maxXp, displayID, isFavorite, sourceText, description, isWild, canBattle, tradable, unique;
+	local _;
 	if PetJournalPetCard.petID then
 		speciesID, customName, level, xp, maxXp, displayID, isFavorite, name, icon, petType, creatureID, sourceText, description, isWild, canBattle, tradable, unique = C_PetJournal.GetPetInfoByPetID(PetJournalPetCard.petID);
 		if ( not speciesID ) then

@@ -14,8 +14,9 @@ function AlertFrameSystems_Register()
 	GarrisonTalentAlertSystem = AlertFrame:AddSimpleAlertFrameSubSystem("GarrisonTalentAlertFrameTemplate", GarrisonTalentAlertFrame_SetUp);
 	WorldQuestCompleteAlertSystem = AlertFrame:AddSimpleAlertFrameSubSystem("WorldQuestCompleteAlertFrameTemplate", WorldQuestCompleteAlertFrame_SetUp, WorldQuestCompleteAlertFrame_Coalesce);
 	LegendaryItemAlertSystem = AlertFrame:AddSimpleAlertFrameSubSystem("LegendaryItemAlertFrameTemplate", LegendaryItemAlertFrame_SetUp);
-	NewPetAlertSystem = AlertFrame:AddSimpleAlertFrameSubSystem("NewPetAlertFrameTemplate", NewPetAlertFrame_SetUp);
-	NewMountAlertSystem = AlertFrame:AddSimpleAlertFrameSubSystem("NewMountAlertFrameTemplate", NewMountAlertFrame_SetUp);
+	NewPetAlertSystem = AlertFrame:AddQueuedAlertFrameSubSystem("NewPetAlertFrameTemplate", NewPetAlertFrame_SetUp);
+	NewMountAlertSystem = AlertFrame:AddQueuedAlertFrameSubSystem("NewMountAlertFrameTemplate", NewMountAlertFrame_SetUp); 
+	NewToyAlertSystem = AlertFrame:AddQueuedAlertFrameSubSystem("NewToyAlertFrameTemplate", NewToyAlertFrame_SetUp); 
 end
 
 -- [[ GuildChallengeAlertFrame ]] --
@@ -98,7 +99,7 @@ function StandardRewardAlertFrame_AdjustRewardAnchors(frame)
 end
 
 function StandardRewardAlertFrame_OnEnter(self)
-	AlertFrame_StopOutAnimation(self:GetParent());
+	AlertFrame_PauseOutAnimation(self:GetParent());
 
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
 	if self.itemLink then
@@ -196,7 +197,7 @@ function DungeonCompletionAlertFrameReward_OnEnter(self)
 	local parent = self:GetParent();
 	local rewardData = parent.rewardData;
 
-	AlertFrame_StopOutAnimation(parent);
+	AlertFrame_PauseOutAnimation(parent);
 
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
 
@@ -265,7 +266,7 @@ function ScenarioLegionInvasionAlertFrame_SetUp(frame, rewardQuestID, name, show
 		DungeonCompletionAlertFrameReward_SetRewardMoney(rewardFrame, money);
 	end
 
-	if xp > 0 and UnitLevel("player") < MAX_PLAYER_LEVEL then
+	if xp > 0 and not IsPlayerAtEffectiveMaxLevel() then
 		local rewardFrame = GetRewardFrame(frame, "InvasionAlertFrameRewardTemplate");
 		DungeonCompletionAlertFrameReward_SetRewardXP(rewardFrame, xp);
 	end
@@ -464,23 +465,29 @@ LOOTWONALERTFRAME_VALUES={
 	Alliance = { bgOffsetX=-1, bgOffsetY=-1, labelOffsetX=7, labelOffsetY=3, labelText=YOU_EARNED_LABEL, pvpAtlas="loottoast-bg-alliance", glowAtlas="loottoast-glow"},
 	RatedHorde = { bgOffsetX=0, bgOffsetY=0, labelOffsetX=7, labelOffsetY=3, labelText=YOU_EARNED_LABEL, pvpAtlas="pvprated-loottoast-bg-horde", glowAtlas="loottoast-glow"},
 	RatedAlliance = { bgOffsetX=0, bgOffsetY=0, labelOffsetX=7, labelOffsetY=3, labelText=YOU_EARNED_LABEL, pvpAtlas="pvprated-loottoast-bg-alliance", glowAtlas="loottoast-glow"},
+	Azerite = { bgOffsetX=0, bgOffsetY=0, labelOffsetX=7, labelOffsetY=3, labelText=AZERITE_EMPOWERED_ITEM_LOOT_LABEL, bgAtlas="LootToast-Azerite", glowAtlas="loottoast-glow"},
 }
 
 -- NOTE - This may also be called for an externally created frame. (E.g. bonus roll has its own frame)
-function LootWonAlertFrame_SetUp(self, itemLink, quantity, rollType, roll, specID, isCurrency, showFactionBG, lootSource, lessAwesome, isUpgraded, wonRoll, showRatedBG)
-	local itemName, itemHyperLink, itemRarity, itemTexture;
+function LootWonAlertFrame_SetUp(self, itemLink, quantity, rollType, roll, specID, isCurrency, showFactionBG, lootSource, lessAwesome, isUpgraded, wonRoll, showRatedBG, isSecondaryResult)
+	local itemName, itemHyperLink, itemRarity, itemTexture, _;
 	if (isCurrency) then
+		local currencyID = C_CurrencyInfo.GetCurrencyIDFromLink(itemLink);
 		itemName, _, itemTexture, _, _, _, _, itemRarity = GetCurrencyInfo(itemLink);
+		itemName, itemTexture, quantity, itemRarity = CurrencyContainerUtil.GetCurrencyContainerInfoForAlert(currencyID, quantity, itemName, itemTexture, itemRarity);
 		if ( lootSource == LOOT_SOURCE_GARRISON_CACHE ) then
 			itemName = format(GARRISON_RESOURCES_LOOT, quantity);
 		else
-			itemName = format(CURRENCY_QUANTITY_TEMPLATE, quantity, itemName);
+			if (quantity > 1) then
+				itemName = format(CURRENCY_QUANTITY_TEMPLATE, quantity, itemName);
+			end
 		end
 		itemHyperLink = itemLink;
 	else
 		itemName, itemHyperLink, itemRarity, _, _, _, _, _, _, itemTexture = GetItemInfo(itemLink);
 	end
 
+	local isAzeriteEmpowered = C_AzeriteEmpoweredItem.IsAzeriteEmpoweredItemByID(itemHyperLink);
 	local windowInfo = wonRoll and LOOTWONALERTFRAME_VALUES.WonRoll or LOOTWONALERTFRAME_VALUES.Default;
 	if( showFactionBG ) then
 		local factionGroup = UnitFactionGroup("player");
@@ -507,6 +514,8 @@ function LootWonAlertFrame_SetUp(self, itemLink, quantity, rollType, roll, specI
 			windowInfo = LOOTWONALERTFRAME_VALUES["LessAwesome"];
 		elseif ( isUpgraded ) then
 			windowInfo = LOOTWONALERTFRAME_VALUES["Upgraded"];
+		elseif ( isAzeriteEmpowered ) then
+			windowInfo = LOOTWONALERTFRAME_VALUES["Azerite"];
 		end
 		if ( windowInfo.bgAtlas ) then
 			self.Background:Hide();
@@ -535,7 +544,11 @@ function LootWonAlertFrame_SetUp(self, itemLink, quantity, rollType, roll, specI
 		self.Icon:SetDrawLayer("BORDER");
 	end
 
-	self.Label:SetText(windowInfo.labelText);
+	if isSecondaryResult then
+		self.Label:SetText(YOU_RECEIVED_LABEL);
+	else
+		self.Label:SetText(windowInfo.labelText);
+	end
 	self.Label:SetPoint("TOPLEFT", self.Icon, "TOPRIGHT", windowInfo.labelOffsetX, windowInfo.labelOffsetY);
 
 	self.isCurrency = isCurrency;
@@ -544,7 +557,20 @@ function LootWonAlertFrame_SetUp(self, itemLink, quantity, rollType, roll, specI
 	self.ItemName:SetText(itemName);
 	local color = ITEM_QUALITY_COLORS[itemRarity];
 	self.ItemName:SetVertexColor(color.r, color.g, color.b);
-	self.IconBorder:SetAtlas(LOOT_BORDER_BY_QUALITY[itemRarity] or LOOT_BORDER_BY_QUALITY[LE_ITEM_QUALITY_UNCOMMON]);
+	local atlas = LOOT_BORDER_BY_QUALITY[itemRarity];
+	local desaturate = false;
+	if (not atlas) then
+		atlas = "loottoast-itemborder-gold";
+		desaturate = true;
+	end
+	self.IconBorder:SetAtlas(atlas);
+	self.IconBorder:SetDesaturated(desaturate);
+	if not windowInfo.noIconBorder and not isCurrency and C_AzeriteEmpoweredItem.IsAzeriteEmpoweredItemByID(itemHyperLink) then
+		self.IconOverlay:SetAtlas("LootToast-Azerite-Border");
+		self.IconOverlay:Show();
+	else
+		self.IconOverlay:Hide();
+	end
 	if ( specID and specID > 0 and not isCurrency ) then
 		local id, name, description, texture, role, class = GetSpecializationInfoByID(specID);
 		self.SpecIcon:SetTexture(texture);
@@ -589,6 +615,8 @@ function LootWonAlertFrame_SetUp(self, itemLink, quantity, rollType, roll, specI
 		PlaySound(SOUNDKIT.UI_RAID_LOOT_TOAST_LESSER_ITEM_WON);
 	elseif ( isUpgraded ) then
 		PlaySound(SOUNDKIT.UI_WARFORGED_ITEM_LOOT_TOAST);
+	elseif ( isAzeriteEmpowered ) then
+		PlaySound(SOUNDKIT.UI_AZERITE_EMPOWERED_ITEM_LOOT_TOAST);
 	else
 		PlaySound(SOUNDKIT.UI_EPICLOOT_TOAST);
 	end
@@ -680,13 +708,14 @@ function DigsiteCompleteToastFrame_SetUp(frame, raceName, raceTexture)
 end
 
 -- [[ StorePurchaseAlertFrame ]] --
-function StorePurchaseAlertFrame_SetUp(frame, type, icon, name, payloadID)
+function StorePurchaseAlertFrame_SetUp(frame, type, icon, name, payloadID, payloadGUID)
 	frame.Icon:SetTexture(icon);
 	frame.Title:SetFontObject(GameFontNormalLarge);
 	frame.Title:SetText(name);
 
 	frame.type = type;
 	frame.payloadID = payloadID;
+	frame.payloadGUID = payloadGUID;
 
 	if ( frame.Title:IsTruncated() ) then
 		frame.Title:SetFontObject(GameFontNormal);
@@ -833,7 +862,7 @@ function GarrisonShipFollowerAlertFrame_SetUp(frame, followerID, name, class, te
 end
 
 function GarrisonFollowerAlertFrame_OnEnter(self)
-	AlertFrame_StopOutAnimation(self);
+	AlertFrame_PauseOutAnimation(self);
 
 	local link = C_Garrison.GetFollowerLink(self.followerID);
 	if ( link ) then
@@ -894,7 +923,7 @@ function NewRecipeLearnedAlertFrame_GetStarTextureFromRank(rank)
 end
 
 function NewRecipeLearnedAlertFrame_SetUp(self, recipeID)
-	local tradeSkillID, skillLineName = C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID);
+	local tradeSkillID, skillLineName, parentTradeSkillID = C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID);
 	if tradeSkillID then
 		local recipeName = GetSpellInfo(recipeID);
 		if recipeName then
@@ -912,7 +941,7 @@ function NewRecipeLearnedAlertFrame_SetUp(self, recipeID)
 			else
 				self.Name:SetText(recipeName);
 			end
-			self.tradeSkillID = tradeSkillID;
+			self.tradeSkillID = parentTradeSkillID or tradeSkillID;
 			self.recipeID = recipeID;
 			return true;
 		end
@@ -935,7 +964,7 @@ NewRecipeLearnedAlertSystem = AlertFrame:AddQueuedAlertFrameSubSystem("NewRecipe
 
 -- [[WorldQuestCompleteAlertFrame ]] --
 function WorldQuestCompleteAlertFrame_GetIconForQuestID(questID)
-	local tagID, tagName, worldQuestType, rarity, isElite, tradeskillLineIndex, displayTimeLeft = GetQuestTagInfo(questID);
+	local tagID, tagName, worldQuestType, rarity, isElite, tradeskillLineIndex = GetQuestTagInfo(questID);
 
 	if ( worldQuestType == LE_QUEST_TAG_TYPE_PVP ) then
 		return "Interface\\Icons\\achievement_arena_2v2_1";
@@ -966,7 +995,7 @@ function WorldQuestCompleteAlertFrame_SetUp(frame, questData)
 		DungeonCompletionAlertFrameReward_SetRewardMoney(rewardFrame, questData.money);
 	end
 
-	if questData.xp > 0 and UnitLevel("player") < MAX_PLAYER_LEVEL then
+	if questData.xp > 0 and not IsPlayerAtEffectiveMaxLevel() then
 		local rewardFrame = GetRewardFrame(frame, "WorldQuestFrameRewardTemplate");
 		DungeonCompletionAlertFrameReward_SetRewardXP(rewardFrame, questData.xp);
 	end
@@ -1017,7 +1046,7 @@ function LegendaryItemAlertFrame_OnClick(self, button, down)
 end
 
 function LegendaryItemAlertFrame_OnEnter(self)
-	AlertFrame_StopOutAnimation(self);
+	AlertFrame_PauseOutAnimation(self);
 
 	GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
 	GameTooltip:SetHyperlink(self.hyperlink);
@@ -1051,7 +1080,7 @@ NewPetAlertFrameMixin = CreateFromMixins(ItemAlertFrameMixin);
 
 function NewPetAlertFrameMixin:SetUp(petID)
 	self.petID = petID;
-	
+
 	local speciesID, customName, level, xp, maxXp, displayID, isFavorite, name, icon = C_PetJournal.GetPetInfoByPetID(petID);
 	local health, maxHealth, attack, speed, rarity = C_PetJournal.GetPetStats(petID);
 	local itemQuality = rarity - 1;
@@ -1062,7 +1091,7 @@ function NewPetAlertFrameMixin:OnClick(button, down)
 	if AlertFrame_OnClick(self, button, down) then
 		return;
 	end
-	
+
 	SetCollectionsJournalShown(true, COLLECTIONS_JOURNAL_TAB_INDEX_PETS);
 	PetJournal_SelectPet(PetJournal, self.petID);
 end
@@ -1077,7 +1106,7 @@ NewMountAlertFrameMixin = CreateFromMixins(ItemAlertFrameMixin);
 
 function NewMountAlertFrameMixin:SetUp(mountID)
 	self.mountID = mountID;
-	
+
 	local creatureName, spellID, icon, active, isUsable, sourceType = C_MountJournal.GetMountInfoByID(mountID);
 	local itemQuality = LE_ITEM_QUALITY_EPIC; -- Mounts don't have an inherent concept of quality so we always use epic (for now).
 	self:SetUpDisplay(icon, itemQuality, creatureName, YOU_EARNED_LABEL);
@@ -1087,7 +1116,32 @@ function NewMountAlertFrameMixin:OnClick(button, down)
 	if AlertFrame_OnClick(self, button, down) then
 		return;
 	end
-	
+
 	SetCollectionsJournalShown(true, COLLECTIONS_JOURNAL_TAB_INDEX_MOUNTS);
 	MountJournal_SelectByMountID(self.mountID);
+end
+
+-- [[ NewToyAlertFrame ]] --
+
+function NewToyAlertFrame_SetUp(frame, toyID)
+	frame:SetUp(toyID);
+end
+
+NewToyAlertFrameMixin = CreateFromMixins(ItemAlertFrameMixin);
+
+function NewToyAlertFrameMixin:SetUp(toyID)
+	self.toyID = toyID;
+
+	local itemID, toyName, icon, isFavorite, hasFanfare, itemQuality = C_ToyBox.GetToyInfo(self.toyID);
+	self:SetUpDisplay(icon, itemQuality, toyName, YOU_EARNED_LABEL);
+end
+
+function NewToyAlertFrameMixin:OnClick(button, down)
+	if AlertFrame_OnClick(self, button, down) then
+		return;
+	end
+
+	CollectionsJournal_LoadUI();
+	ToyBox.autoPageToCollectedToyID = self.toyID;
+	SetCollectionsJournalShown(true, COLLECTIONS_JOURNAL_TAB_INDEX_TOYS);
 end
